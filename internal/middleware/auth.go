@@ -41,7 +41,11 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		//把解析出来的用户信息存到当前请求的上下文里
+		// 关键：把 claims 注入 request context，供 service/repository 在不依赖 gin 的情况下读取。
+		c.Request = c.Request.WithContext(auth.WithClaims(c.Request.Context(), claims))
+
+		// 下面这些是给仍然依赖 gin.Context 的代码保留的兼容字段。
+		c.Set("authClaims", claims)
 		c.Set("userId", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("roles", claims.Roles)

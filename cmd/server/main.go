@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/yangnuowen1-arch/resume_back/internal/bootstrap"
 	"github.com/yangnuowen1-arch/resume_back/internal/config"
 	"github.com/yangnuowen1-arch/resume_back/internal/db"
 	"github.com/yangnuowen1-arch/resume_back/internal/router"
@@ -22,6 +23,10 @@ func main() {
 	cfg := config.LoadConfig()
 
 	database := db.ConnectDB(cfg)
+
+	if err := bootstrap.EnsureDefaultRoles(database); err != nil {
+		log.Fatalf("默认角色初始化失败: %v", err)
+	}
 
 	app := router.SetupRouter(database, cfg)
 

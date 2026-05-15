@@ -1,11 +1,17 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+)
+
+const (
+	DefaultUserRoleCode  = "user"
+	DefaultAdminRoleCode = "admin"
 )
 
 type Claims struct {
@@ -70,4 +76,38 @@ func ParseToken(tokenString string, secret string) (*Claims, error) {
 	}
 
 	return claims, nil
+}
+
+// claimsContextKey 使用私有类型作为 context key，避免和其他包发生 key 冲突。
+// 即使是空结构体也没问题：context 比较的是“键的类型和值”，
+// 这个未导出类型在本包内是唯一的，且零内存开销。
+type claimsContextKey struct{}
+
+func WithClaims(ctx context.Context, claims *Claims) context.Context {
+	if ctx == nil || claims == nil {
+		return ctx
+	}
+
+	// 拷贝一份 claims 再放入 context，避免后续代码误改原对象。
+	copied := *claims
+	if claims.Roles != nil {
+		copied.Roles = append([]string(nil), claims.Roles...)
+	}
+
+	// context.WithValue 会返回一个“新 context”，原 context 不会被修改。
+	return context.WithValue(ctx, claimsContextKey{}, &copied)
+}
+
+func ClaimsFromContext(ctx context.Context) (*Claims, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+
+	// 读取时要用同一个 key 类型，否则取不出来。
+	claims, ok := ctx.Value(claimsContextKey{}).(*Claims)
+	if !ok || claims == nil {
+		return nil, false
+	}
+
+	return claims, true
 }

@@ -79,11 +79,14 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 		Status:       "active",
 	}
 
-	if err := s.repo.Create(ctx, user); err != nil {
+	// 注册默认分配普通用户角色。
+	// 这一步和创建用户在同一个事务里执行（见 repository.CreateWithRoles）。
+	roles := []string{auth.DefaultUserRoleCode}
+	if err := s.repo.CreateWithRoles(ctx, user, roles); err != nil {
 		return nil, err
 	}
 
-	return s.buildAuthResponse(user)
+	return s.buildAuthResponse(user, roles)
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResponse, error) {
@@ -114,11 +117,21 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 	}
 	user.LastLoginAt = &now
 
-	return s.buildAuthResponse(user)
+	// 登录时从数据库读取真实角色，而不是写死在代码里。
+	// 这样角色变更后，下一次登录拿到的 token 就会同步变化。
+	roles, err := s.repo.FindRoleCodesByUserID(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.buildAuthResponse(user, roles)
 }
 
-func (s *authService) buildAuthResponse(user *model.User) (*dto.AuthResponse, error) {
-	roles := []string{"user"}
+func (s *authService) buildAuthResponse(user *model.User, roleCodes []string) (*dto.AuthResponse, error) {
+	roles := normalizeRoleCodes(roleCodes)
+	if len(roles) == 0 {
+		roles = []string{auth.DefaultUserRoleCode}
+	}
 
 	token, err := auth.GenerateToken(user.ID, user.Username, roles, s.cfg.JWTSecret, s.cfg.JWTExpireHours)
 	if err != nil {
@@ -157,4 +170,25 @@ func trimOptionalString(value *string) *string {
 	}
 
 	return &trimmed
+}
+
+func normalizeRoleCodes(roleCodes []string) []string {
+	seen := make(map[string]struct{}, len(roleCodes))
+	normalized := make([]string, 0, len(roleCodes))
+
+	for _, roleCode := range roleCodes {
+		roleCode = strings.TrimSpace(roleCode)
+		if roleCode == "" {
+			continue
+		}
+
+		if _, ok := seen[roleCode]; ok {
+			continue
+		}
+
+		seen[roleCode] = struct{}{}
+		normalized = append(normalized, roleCode)
+	}
+
+	return normalized
 }

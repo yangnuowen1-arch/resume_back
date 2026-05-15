@@ -2,6 +2,7 @@ package handler
 
 //Handler 负责：真正处理这个请求
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -50,11 +51,13 @@ func (h *JobCategoryHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// 登录功能没做之前，先传 nil
-	var operatorID *int64 = nil
-
-	id, err := h.service.Create(c.Request.Context(), req, operatorID)
+	id, err := h.service.Create(c.Request.Context(), req)
 	if err != nil {
+		if errors.Is(err, service.ErrUnauthenticated) {
+			response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
+			return
+		}
+
 		response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
 		return
 	}
@@ -83,6 +86,14 @@ func (h *JobCategoryHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 
+	if page < 1 {
+		page = 1
+	}
+
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
 	query := dto.JobCategoryQuery{
 		Page:     page,
 		PageSize: pageSize,
@@ -94,14 +105,6 @@ func (h *JobCategoryHandler) List(c *gin.Context) {
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, 50001, "查询岗位分类失败", err.Error())
 		return
-	}
-
-	if query.Page < 1 {
-		query.Page = 1
-	}
-
-	if query.PageSize < 1 || query.PageSize > 100 {
-		query.PageSize = 20
 	}
 
 	totalPages := int((total + int64(query.PageSize) - 1) / int64(query.PageSize))

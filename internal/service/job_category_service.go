@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 
+	"github.com/yangnuowen1-arch/resume_back/internal/auth"
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
 )
 
 type JobCategoryService interface {
-	Create(ctx context.Context, req dto.CreateJobCategoryRequest, operatorID *int64) (int64, error)
+	Create(ctx context.Context, req dto.CreateJobCategoryRequest) (int64, error)
 	List(ctx context.Context, query dto.JobCategoryQuery) ([]dto.JobCategoryResponse, int64, error)
 }
 
@@ -27,8 +28,13 @@ func NewJobCategoryService(repo repository.JobCategoryRepository) JobCategorySer
 func (s *jobCategoryService) Create(
 	ctx context.Context,
 	req dto.CreateJobCategoryRequest,
-	operatorID *int64,
 ) (int64, error) {
+	// 从请求上下文读取当前登录用户；如果拿不到，说明鉴权链路缺失或 token 无效。
+	claims, ok := auth.ClaimsFromContext(ctx)
+	if !ok || claims.UserID <= 0 {
+		return 0, ErrUnauthenticated
+	}
+
 	exists, err := s.repo.ExistsByName(ctx, req.Name)
 	if err != nil {
 		return 0, err
@@ -45,13 +51,15 @@ func (s *jobCategoryService) Create(
 		}
 	}
 
+	// 取局部变量地址赋给 CreatedBy，避免直接取结构体字段地址带来的可读性问题。
+	userID := claims.UserID
 	category := &model.JobCategory{
 		Name:        req.Name,
 		Description: req.Description,
 		ParentID:    req.ParentID,
 		SortOrder:   req.SortOrder,
 		Status:      "active",
-		CreatedBy:   operatorID,
+		CreatedBy:   &userID,
 	}
 
 	if err := s.repo.Create(ctx, category); err != nil {
