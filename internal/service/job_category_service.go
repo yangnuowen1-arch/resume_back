@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
-	"github.com/yangnuowen1-arch/resume_back/internal/auth"
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
@@ -12,13 +12,16 @@ import (
 
 type JobCategoryService interface {
 	Create(ctx context.Context, req dto.CreateJobCategoryRequest) (int64, error)
+	Update(ctx context.Context, id int64, req dto.UpdateJobCategoryRequest) error
 	List(ctx context.Context, query dto.JobCategoryQuery) ([]dto.JobCategoryResponse, int64, error)
 }
 
+// jobCategoryService 是 JobCategoryService 接口的具体实现，内部通过 repo 操作岗位分类数据。
 type jobCategoryService struct {
 	repo repository.JobCategoryRepository
 }
 
+// NewJobCategoryService 把外部创建好的 repository 注入 service，handler 只需要依赖返回的接口。
 func NewJobCategoryService(repo repository.JobCategoryRepository) JobCategoryService {
 	return &jobCategoryService{
 		repo: repo,
@@ -29,10 +32,15 @@ func (s *jobCategoryService) Create(
 	ctx context.Context,
 	req dto.CreateJobCategoryRequest,
 ) (int64, error) {
-	// 从请求上下文读取当前登录用户；如果拿不到，说明鉴权链路缺失或 token 无效。
-	claims, ok := auth.ClaimsFromContext(ctx)
-	if !ok || claims.UserID <= 0 {
-		return 0, ErrUnauthenticated
+	userID, err := currentUserID(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	req.Description = trimOptionalString(req.Description)
+	if req.Name == "" {
+		return 0, errors.New("岗位分类名称不能为空")
 	}
 
 	exists, err := s.repo.ExistsByName(ctx, req.Name)
@@ -52,7 +60,6 @@ func (s *jobCategoryService) Create(
 	}
 
 	// 取局部变量地址赋给 CreatedBy，避免直接取结构体字段地址带来的可读性问题。
-	userID := claims.UserID
 	category := &model.JobCategory{
 		Name:        req.Name,
 		Description: req.Description,
@@ -67,6 +74,59 @@ func (s *jobCategoryService) Create(
 	}
 
 	return category.ID, nil
+}
+
+func (s *jobCategoryService) Update(ctx context.Context, id int64, req dto.UpdateJobCategoryRequest) error {
+	if _, err := currentUserID(ctx); err != nil {
+		return err
+	}
+
+	if id <= 0 {
+		return errors.New("岗位分类 ID 不合法")
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	req.Description = trimOptionalString(req.Description)
+	req.Status = strings.TrimSpace(req.Status)
+	if req.Name == "" {
+		return errors.New("岗位分类名称不能为空")
+	}
+	if req.Status == "" {
+		return errors.New("岗位分类状态不能为空")
+	}
+
+	if _, err := s.repo.FindByID(ctx, id); err != nil {
+		return errors.New("岗位分类不存在")
+	}
+
+	exists, err := s.repo.ExistsByNameExceptID(ctx, req.Name, id)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return errors.New("岗位分类名称已存在")
+	}
+
+	if req.ParentID != nil {
+		if *req.ParentID == id {
+			return errors.New("父级分类不能是自己")
+		}
+		if _, err := s.repo.FindByID(ctx, *req.ParentID); err != nil {
+			return errors.New("父级分类不存在")
+		}
+	}
+
+	// 将清洗和校验后的请求数据组装成数据库模型，再交给 repository 执行更新。
+	category := &model.JobCategory{
+		ID:          id,
+		Name:        req.Name,
+		Description: req.Description,
+		ParentID:    req.ParentID,
+		SortOrder:   req.SortOrder,
+		Status:      req.Status,
+	}
+
+	return s.repo.Update(ctx, category)
 }
 
 func (s *jobCategoryService) List(

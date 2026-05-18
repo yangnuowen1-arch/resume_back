@@ -11,7 +11,6 @@ package main
 
 import (
 	"log"
-	"net/http"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/bootstrap"
 	"github.com/yangnuowen1-arch/resume_back/internal/config"
@@ -36,8 +35,8 @@ func main() {
 		log.Fatalf("服务启动失败: %v", err)
 	}
 
-	err := http.ListenAndServe("0.0.0.0:8081", nil)
-	if err != nil {
-		log.Fatal(err)
-	}
+	//err := http.ListenAndServe("0.0.0.0:8081", nil)
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
 }

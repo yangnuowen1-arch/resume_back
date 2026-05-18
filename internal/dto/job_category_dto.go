@@ -9,6 +9,14 @@ type CreateJobCategoryRequest struct {
 	SortOrder   int32   `json:"sortOrder"`
 }
 
+type UpdateJobCategoryRequest struct {
+	Name        string  `json:"name" binding:"required"`
+	Description *string `json:"description"`
+	ParentID    *int64  `json:"parentId"`
+	SortOrder   int32   `json:"sortOrder"`
+	Status      string  `json:"status" binding:"required"`
+}
+
 type JobCategoryQuery struct {
 	Page     int
 	PageSize int

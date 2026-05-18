@@ -31,6 +31,18 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	jobCategoryService := service.NewJobCategoryService(jobCategoryRepo)
 	jobCategoryHandler := handler.NewJobCategoryHandler(jobCategoryService)
 
+	tagGroupRepo := repository.NewTagGroupRepository(db)
+	tagGroupService := service.NewTagGroupService(tagGroupRepo)
+	tagGroupHandler := handler.NewTagGroupHandler(tagGroupService)
+
+	tagRepo := repository.NewTagRepository(db)
+	tagService := service.NewTagService(tagRepo, tagGroupRepo)
+	tagHandler := handler.NewTagHandler(tagService)
+
+	jobRepo := repository.NewJobRepository(db)
+	jobService := service.NewJobService(jobRepo)
+	jobHandler := handler.NewJobHandler(jobService)
+
 	//public 路由
 	authRouter := api.Group("/auth")
 	{
@@ -44,6 +56,20 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	{
 		private.GET("/job-categories", jobCategoryHandler.List)
 		private.POST("/job-categories", jobCategoryHandler.Create)
+		private.PUT("/job-categories/:id", jobCategoryHandler.Update)
+
+		private.GET("/tag-groups", tagGroupHandler.List)
+		private.POST("/tag-groups", tagGroupHandler.Create)
+
+		private.GET("/tags", tagHandler.List)
+		private.POST("/tags", tagHandler.Create)
+		private.PUT("/tags/:id", tagHandler.Update)
+
+		private.GET("/jobs", jobHandler.List)
+		private.POST("/jobs", jobHandler.Create)
+		private.PUT("/jobs/:id", jobHandler.Update)
+		private.PUT("/jobs/:id/tags", jobHandler.BindTags)
+		private.POST("/jobs/:id/members", jobHandler.AssignMember)
 	}
 
 	return r

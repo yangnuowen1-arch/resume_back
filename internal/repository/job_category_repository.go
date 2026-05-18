@@ -11,26 +11,43 @@ import (
 
 // 返回 *model.JobCategory的话是因为，需要把数据拿回来
 type JobCategoryRepository interface {
-	Create(ctx context.Context, category *model.JobCategory) error                                                        //插入一条记录
-	FindByID(ctx context.Context, id int64) (*model.JobCategory, error)                                                   //按 ID 查一条
-	ExistsByName(ctx context.Context, name string) (bool, error)                                                          //检查名字是否已存在（用于判断重名）
+	Create(ctx context.Context, category *model.JobCategory) error //插入一条记录
+	Update(ctx context.Context, category *model.JobCategory) error
+	FindByID(ctx context.Context, id int64) (*model.JobCategory, error) //按 ID 查一条
+	ExistsByName(ctx context.Context, name string) (bool, error)        //检查名字是否已存在（用于判断重名）
+	ExistsByNameExceptID(ctx context.Context, name string, id int64) (bool, error)
 	List(ctx context.Context, keyword string, status string, page int, pageSize int) ([]*model.JobCategory, int64, error) //分页+筛选查列表
 }
 
 // 私有 struct，外部看不到，只能通过 interface 使用
 type jobCategoryRepository struct {
-	q *query.Query
+	q  *query.Query
+	db *gorm.DB
 }
 
 // 传入数据库连接，返回一个可用的 repository 实例
 func NewJobCategoryRepository(db *gorm.DB) JobCategoryRepository {
 	return &jobCategoryRepository{
-		q: query.Use(db),
+		q:  query.Use(db),
+		db: db,
 	}
 }
 
 func (r *jobCategoryRepository) Create(ctx context.Context, category *model.JobCategory) error {
 	return r.q.JobCategory.WithContext(ctx).Create(category)
+}
+
+func (r *jobCategoryRepository) Update(ctx context.Context, category *model.JobCategory) error {
+	return r.db.WithContext(ctx).
+		Model(&model.JobCategory{}).
+		Where("id = ?", category.ID).
+		Updates(map[string]interface{}{
+			"name":        category.Name,
+			"description": category.Description,
+			"parent_id":   category.ParentID,
+			"sort_order":  category.SortOrder,
+			"status":      category.Status,
+		}).Error
 }
 
 func (r *jobCategoryRepository) FindByID(ctx context.Context, id int64) (*model.JobCategory, error) {
@@ -46,6 +63,20 @@ func (r *jobCategoryRepository) ExistsByName(ctx context.Context, name string) (
 
 	count, err := jc.WithContext(ctx).
 		Where(jc.Name.Eq(name)).
+		Count()
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+func (r *jobCategoryRepository) ExistsByNameExceptID(ctx context.Context, name string, id int64) (bool, error) {
+	jc := r.q.JobCategory
+
+	count, err := jc.WithContext(ctx).
+		Where(jc.Name.Eq(name), jc.ID.Neq(id)).
 		Count()
 
 	if err != nil {

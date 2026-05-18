@@ -1,5 +1,24 @@
 basePath: /api/v1
 definitions:
+  dto.AssignJobMemberRequest:
+    properties:
+      memberRole:
+        type: string
+      userId:
+        type: integer
+    required:
+    - memberRole
+    - userId
+    type: object
+  dto.BindJobTagsRequest:
+    properties:
+      tagIds:
+        items:
+          type: integer
+        type: array
+    required:
+    - tagIds
+    type: object
   dto.CreateJobCategoryRequest:
     properties:
       description:
@@ -10,6 +29,73 @@ definitions:
         type: integer
       sortOrder:
         type: integer
+    required:
+    - name
+    type: object
+  dto.CreateJobRequest:
+    properties:
+      bonusPoints:
+        type: string
+      categoryId:
+        type: integer
+      department:
+        type: string
+      description:
+        type: string
+      educationLevel:
+        type: string
+      employmentType:
+        type: string
+      experienceMax:
+        type: integer
+      experienceMin:
+        type: integer
+      headcount:
+        type: integer
+      ownerUserId:
+        type: integer
+      priority:
+        type: string
+      requirements:
+        type: string
+      responsibilities:
+        type: string
+      salaryMax:
+        type: integer
+      salaryMin:
+        type: integer
+      salaryMonths:
+        type: integer
+      status:
+        type: string
+      title:
+        type: string
+      workLocation:
+        type: string
+      workType:
+        type: string
+    required:
+    - title
+    type: object
+  dto.CreateTagGroupRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      sortOrder:
+        type: integer
+    required:
+    - name
+    type: object
+  dto.CreateTagRequest:
+    properties:
+      color:
+        type: string
+      groupId:
+        type: integer
+      name:
+        type: string
     required:
     - name
     type: object
@@ -45,6 +131,83 @@ definitions:
     required:
     - password
     - username
+    type: object
+  dto.UpdateJobCategoryRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      parentId:
+        type: integer
+      sortOrder:
+        type: integer
+      status:
+        type: string
+    required:
+    - name
+    - status
+    type: object
+  dto.UpdateJobRequest:
+    properties:
+      bonusPoints:
+        type: string
+      categoryId:
+        type: integer
+      department:
+        type: string
+      description:
+        type: string
+      educationLevel:
+        type: string
+      employmentType:
+        type: string
+      experienceMax:
+        type: integer
+      experienceMin:
+        type: integer
+      headcount:
+        type: integer
+      ownerUserId:
+        type: integer
+      priority:
+        type: string
+      requirements:
+        type: string
+      responsibilities:
+        type: string
+      salaryMax:
+        type: integer
+      salaryMin:
+        type: integer
+      salaryMonths:
+        type: integer
+      status:
+        type: string
+      title:
+        type: string
+      workLocation:
+        type: string
+      workType:
+        type: string
+    required:
+    - priority
+    - status
+    - title
+    type: object
+  dto.UpdateTagRequest:
+    properties:
+      color:
+        type: string
+      groupId:
+        type: integer
+      name:
+        type: string
+      status:
+        type: string
+    required:
+    - name
+    - status
     type: object
   response.APIResponse:
     properties:
@@ -219,6 +382,466 @@ paths:
       summary: 创建岗位分类
       tags:
       - 岗位分类
+  /job-categories/{id}:
+    put:
+      consumes:
+      - application/json
+      description: 根据 ID 编辑岗位分类名称、描述、父级分类、排序和状态
+      parameters:
+      - description: 岗位分类 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 编辑岗位分类请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateJobCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 编辑岗位分类
+      tags:
+      - 岗位分类
+  /jobs:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询岗位，可按岗位分类、岗位名称关键词和状态筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 岗位名称关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 岗位分类 ID
+        in: query
+        name: categoryId
+        type: integer
+      - description: 状态 draft/published/closed
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询岗位列表
+      tags:
+      - 岗位
+    post:
+      consumes:
+      - application/json
+      description: 创建一个新的招聘岗位，支持关联岗位分类和负责人
+      parameters:
+      - description: 创建岗位请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateJobRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建岗位
+      tags:
+      - 岗位
+  /jobs/{id}:
+    put:
+      consumes:
+      - application/json
+      description: 根据 ID 编辑岗位基础信息、要求、状态、优先级和负责人
+      parameters:
+      - description: 岗位 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 编辑岗位请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateJobRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 编辑岗位
+      tags:
+      - 岗位
+  /jobs/{id}/members:
+    post:
+      consumes:
+      - application/json
+      description: 给岗位分配协作成员；同一岗位同一用户已存在时更新成员角色
+      parameters:
+      - description: 岗位 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 岗位成员分配请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AssignJobMemberRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 给岗位分配成员
+      tags:
+      - 岗位
+  /jobs/{id}/tags:
+    put:
+      consumes:
+      - application/json
+      description: 覆盖式设置岗位标签，传空数组表示清空岗位标签
+      parameters:
+      - description: 岗位 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 岗位标签绑定请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BindJobTagsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 给岗位绑定标签
+      tags:
+      - 岗位
+  /tag-groups:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询标签分组，可按名称关键词和状态筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 关键词
+        in: query
+        name: keyword
+        type: string
+      - default: active
+        description: 状态 active/disabled
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询标签分组列表
+      tags:
+      - 标签分组
+    post:
+      consumes:
+      - application/json
+      description: 创建一个新的标签分组，例如技术能力、经验要求、面试评价
+      parameters:
+      - description: 创建标签分组请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTagGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建标签分组
+      tags:
+      - 标签分组
+  /tags:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询标签，可按标签分组、名称关键词和状态筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 标签分组 ID
+        in: query
+        name: groupId
+        type: integer
+      - default: active
+        description: 状态 active/disabled
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询标签列表
+      tags:
+      - 标签
+    post:
+      consumes:
+      - application/json
+      description: 创建一个新的岗位标签，可选择归属标签分组
+      parameters:
+      - description: 创建标签请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTagRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建标签
+      tags:
+      - 标签
+  /tags/{id}:
+    put:
+      consumes:
+      - application/json
+      description: 根据 ID 编辑标签名称、所属分组、颜色和状态
+      parameters:
+      - description: 标签 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 编辑标签请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateTagRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 编辑标签
+      tags:
+      - 标签
 securityDefinitions:
   BearerAuth:
     in: header
