@@ -19,6 +19,24 @@ definitions:
     required:
     - tagIds
     type: object
+  dto.CreateApplicationRequest:
+    properties:
+      candidateId:
+        type: integer
+      jobId:
+        type: integer
+      remark:
+        type: string
+      resumeId:
+        type: integer
+      source:
+        type: string
+      status:
+        type: string
+    required:
+    - jobId
+    - resumeId
+    type: object
   dto.CreateJobCategoryRequest:
     properties:
       description:
@@ -132,6 +150,33 @@ definitions:
     - password
     - username
     type: object
+  dto.ResumeResponse:
+    properties:
+      candidateId:
+        type: integer
+      createdAt:
+        type: string
+      fileSize:
+        type: integer
+      fileType:
+        type: string
+      fileUrl:
+        type: string
+      id:
+        type: integer
+      language:
+        type: string
+      originalFilename:
+        type: string
+      rawText:
+        type: string
+      updatedAt:
+        type: string
+      uploadBy:
+        type: integer
+      uploadedAt:
+        type: string
+    type: object
   dto.UpdateJobCategoryRequest:
     properties:
       description:
@@ -209,6 +254,19 @@ definitions:
     - name
     - status
     type: object
+  dto.UploadResumeResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/dto.ResumeResponse'
+      message:
+        type: string
+      requestId:
+        type: string
+      timestamp:
+        type: string
+    type: object
   response.APIResponse:
     properties:
       code:
@@ -231,6 +289,42 @@ info:
   title: AI Resume Screening API
   version: "1.0"
 paths:
+  /applications:
+    post:
+      consumes:
+      - application/json
+      description: 将简历投递到指定岗位，生成一条投递记录
+      parameters:
+      - description: 创建投递记录请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateApplicationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建投递记录
+      tags:
+      - 投递记录
   /auth/login:
     post:
       consumes:
@@ -552,6 +646,40 @@ paths:
       tags:
       - 岗位
   /jobs/{id}/members:
+    get:
+      consumes:
+      - application/json
+      description: 查询指定岗位当前已分配的协作成员列表
+      parameters:
+      - description: 岗位 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询岗位成员列表
+      tags:
+      - 岗位
     post:
       consumes:
       - application/json
@@ -593,6 +721,40 @@ paths:
       tags:
       - 岗位
   /jobs/{id}/tags:
+    get:
+      consumes:
+      - application/json
+      description: 查询指定岗位当前已经绑定的标签列表，用于编辑岗位时回显标签选择
+      parameters:
+      - description: 岗位 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询岗位已绑定标签
+      tags:
+      - 岗位
     put:
       consumes:
       - application/json
@@ -633,6 +795,53 @@ paths:
       summary: 给岗位绑定标签
       tags:
       - 岗位
+  /resumes/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传简历文件并写入简历记录，支持可选绑定候选人
+      parameters:
+      - description: 简历文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: 候选人 ID
+        in: formData
+        name: candidateId
+        type: integer
+      - description: 简历原始文本
+        in: formData
+        name: rawText
+        type: string
+      - description: 简历语言
+        in: formData
+        name: language
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 上传成功，data 为简历记录
+          schema:
+            $ref: '#/definitions/dto.UploadResumeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 上传简历
+      tags:
+      - 简历
   /tag-groups:
     get:
       consumes:

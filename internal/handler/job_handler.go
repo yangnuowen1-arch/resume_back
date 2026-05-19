@@ -186,6 +186,40 @@ func (h *JobHandler) BindTags(c *gin.Context) {
 	response.Success(c, gin.H{"id": jobID})
 }
 
+// ListTags 查询岗位已绑定标签
+// @Summary 查询岗位已绑定标签
+// @Description 查询指定岗位当前已经绑定的标签列表，用于编辑岗位时回显标签选择
+// @Tags 岗位
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "岗位 ID"
+// @Success 200 {object} response.APIResponse
+// @Failure 400 {object} response.APIResponse
+// @Failure 401 {object} response.APIResponse
+// @Failure 500 {object} response.APIResponse
+// @Router /jobs/{id}/tags [get]
+func (h *JobHandler) ListTags(c *gin.Context) {
+	jobID, ok := parseInt64Param(c, "id")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "岗位 ID 不合法", nil)
+		return
+	}
+
+	items, err := h.service.ListTags(c.Request.Context(), jobID)
+	if err != nil {
+		if errors.Is(err, service.ErrUnauthenticated) {
+			response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
+			return
+		}
+
+		response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
+		return
+	}
+
+	response.Success(c, items)
+}
+
 // AssignMember 给岗位分配成员
 // @Summary 给岗位分配成员
 // @Description 给岗位分配协作成员；同一岗位同一用户已存在时更新成员角色
@@ -225,6 +259,40 @@ func (h *JobHandler) AssignMember(c *gin.Context) {
 	}
 
 	response.Created(c, gin.H{"id": memberID})
+}
+
+// ListMembers 查询岗位成员列表
+// @Summary 查询岗位成员列表
+// @Description 查询指定岗位当前已分配的协作成员列表
+// @Tags 岗位
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "岗位 ID"
+// @Success 200 {object} response.APIResponse
+// @Failure 400 {object} response.APIResponse
+// @Failure 401 {object} response.APIResponse
+// @Failure 500 {object} response.APIResponse
+// @Router /jobs/{id}/members [get]
+func (h *JobHandler) ListMembers(c *gin.Context) {
+	jobID, ok := parseInt64Param(c, "id")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "岗位 ID 不合法", nil)
+		return
+	}
+
+	items, err := h.service.ListMembers(c.Request.Context(), jobID)
+	if err != nil {
+		if errors.Is(err, service.ErrUnauthenticated) {
+			response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
+			return
+		}
+
+		response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
+		return
+	}
+
+	response.Success(c, items)
 }
 
 func parseInt64Param(c *gin.Context, key string) (int64, bool) {

@@ -102,3 +102,26 @@ type JobMemberResponse struct {
 	CreatedBy  *int64    `json:"createdBy"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
+
+type JobTagResponse struct {
+	JobID     int64     `json:"jobId"`
+	TagID     int64     `json:"tagId"`
+	GroupID   *int64    `json:"groupId"`
+	Name      string    `json:"name"`
+	Color     *string   `json:"color"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type JobMemberDetailResponse struct {
+	ID         int64     `json:"id"`
+	JobID      int64     `json:"jobId"`
+	UserID     int64     `json:"userId"`
+	Username   string    `json:"username"`
+	RealName   *string   `json:"realName"`
+	Email      *string   `json:"email"`
+	UserStatus string    `json:"userStatus"`
+	MemberRole string    `json:"memberRole"`
+	CreatedBy  *int64    `json:"createdBy"`
+	CreatedAt  time.Time `json:"createdAt"`
+}

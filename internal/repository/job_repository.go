@@ -3,10 +3,34 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
 	"gorm.io/gorm"
 )
+
+type JobTagWithTag struct {
+	JobID     int64
+	TagID     int64
+	GroupID   *int64
+	Name      string
+	Color     *string
+	Status    string
+	CreatedAt time.Time
+}
+
+type JobMemberWithUser struct {
+	ID         int64
+	JobID      int64
+	UserID     int64
+	Username   string
+	RealName   *string
+	Email      *string
+	UserStatus string
+	MemberRole string
+	CreatedBy  *int64
+	CreatedAt  time.Time
+}
 
 type JobRepository interface {
 	Create(ctx context.Context, job *model.Job) error
@@ -25,9 +49,11 @@ type JobRepository interface {
 
 	// BindTags 给岗位重新绑定标签，会先清空旧关联，再写入新的岗位-标签关系。
 	BindTags(ctx context.Context, jobID int64, tagIDs []int64) error
+	ListTags(ctx context.Context, jobID int64) ([]JobTagWithTag, error)
 
 	// AssignMember 给岗位分配成员；如果该用户已是岗位成员，则更新成员角色。
 	AssignMember(ctx context.Context, member *model.JobMember) error
+	ListMembers(ctx context.Context, jobID int64) ([]JobMemberWithUser, error)
 }
 
 type jobRepository struct {
@@ -185,6 +211,22 @@ func (r *jobRepository) BindTags(ctx context.Context, jobID int64, tagIDs []int6
 	})
 }
 
+func (r *jobRepository) ListTags(ctx context.Context, jobID int64) ([]JobTagWithTag, error) {
+	items := make([]JobTagWithTag, 0)
+	err := r.db.WithContext(ctx).
+		Table(model.TableNameJobTag).
+		Select("job_tags.job_id, job_tags.tag_id, tags.group_id, tags.name, tags.color, tags.status, job_tags.created_at").
+		Joins("JOIN "+model.TableNameTag+" ON tags.id = job_tags.tag_id").
+		Where("job_tags.job_id = ?", jobID).
+		Order("tags.id ASC").
+		Scan(&items).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 func (r *jobRepository) AssignMember(ctx context.Context, member *model.JobMember) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		existing := &model.JobMember{}
@@ -208,4 +250,20 @@ func (r *jobRepository) AssignMember(ctx context.Context, member *model.JobMembe
 
 		return nil
 	})
+}
+
+func (r *jobRepository) ListMembers(ctx context.Context, jobID int64) ([]JobMemberWithUser, error) {
+	items := make([]JobMemberWithUser, 0)
+	err := r.db.WithContext(ctx).
+		Table(model.TableNameJobMember).
+		Select("job_members.id, job_members.job_id, job_members.user_id, users.username, users.real_name, users.email, users.status AS user_status, job_members.member_role, job_members.created_by, job_members.created_at").
+		Joins("JOIN "+model.TableNameUser+" ON users.id = job_members.user_id").
+		Where("job_members.job_id = ?", jobID).
+		Order("job_members.id ASC").
+		Scan(&items).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }

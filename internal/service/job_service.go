@@ -15,7 +15,9 @@ type JobService interface {
 	Update(ctx context.Context, id int64, req dto.UpdateJobRequest) error
 	List(ctx context.Context, query dto.JobQuery) ([]dto.JobResponse, int64, error)
 	BindTags(ctx context.Context, jobID int64, req dto.BindJobTagsRequest) error
+	ListTags(ctx context.Context, jobID int64) ([]dto.JobTagResponse, error)
 	AssignMember(ctx context.Context, jobID int64, req dto.AssignJobMemberRequest) (int64, error)
+	ListMembers(ctx context.Context, jobID int64) ([]dto.JobMemberDetailResponse, error)
 }
 
 type jobService struct {
@@ -251,6 +253,39 @@ func (s *jobService) BindTags(ctx context.Context, jobID int64, req dto.BindJobT
 	return s.repo.BindTags(ctx, jobID, tagIDs)
 }
 
+func (s *jobService) ListTags(ctx context.Context, jobID int64) ([]dto.JobTagResponse, error) {
+	if _, err := currentUserID(ctx); err != nil {
+		return nil, err
+	}
+
+	if jobID <= 0 {
+		return nil, errors.New("岗位 ID 不合法")
+	}
+	if _, err := s.repo.FindByID(ctx, jobID); err != nil {
+		return nil, errors.New("岗位不存在")
+	}
+
+	items, err := s.repo.ListTags(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]dto.JobTagResponse, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.JobTagResponse{
+			JobID:     item.JobID,
+			TagID:     item.TagID,
+			GroupID:   item.GroupID,
+			Name:      item.Name,
+			Color:     item.Color,
+			Status:    item.Status,
+			CreatedAt: item.CreatedAt,
+		})
+	}
+
+	return result, nil
+}
+
 func (s *jobService) AssignMember(ctx context.Context, jobID int64, req dto.AssignJobMemberRequest) (int64, error) {
 	userID, err := currentUserID(ctx)
 	if err != nil {
@@ -291,6 +326,42 @@ func (s *jobService) AssignMember(ctx context.Context, jobID int64, req dto.Assi
 	}
 
 	return member.ID, nil
+}
+
+func (s *jobService) ListMembers(ctx context.Context, jobID int64) ([]dto.JobMemberDetailResponse, error) {
+	if _, err := currentUserID(ctx); err != nil {
+		return nil, err
+	}
+
+	if jobID <= 0 {
+		return nil, errors.New("岗位 ID 不合法")
+	}
+	if _, err := s.repo.FindByID(ctx, jobID); err != nil {
+		return nil, errors.New("岗位不存在")
+	}
+
+	items, err := s.repo.ListMembers(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]dto.JobMemberDetailResponse, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.JobMemberDetailResponse{
+			ID:         item.ID,
+			JobID:      item.JobID,
+			UserID:     item.UserID,
+			Username:   item.Username,
+			RealName:   item.RealName,
+			Email:      item.Email,
+			UserStatus: item.UserStatus,
+			MemberRole: item.MemberRole,
+			CreatedBy:  item.CreatedBy,
+			CreatedAt:  item.CreatedAt,
+		})
+	}
+
+	return result, nil
 }
 
 // normalizeCreateJobRequest 统一清洗岗位创建/更新参数。
