@@ -43,12 +43,16 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	jobService := service.NewJobService(jobRepo)
 	jobHandler := handler.NewJobHandler(jobService)
 
+	candidateRepo := repository.NewCandidateRepository(db)
+	candidateService := service.NewCandidateService(candidateRepo)
+	candidateHandler := handler.NewCandidateHandler(candidateService)
+
 	resumeRepo := repository.NewResumeRepository(db)
-	resumeService := service.NewResumeService(resumeRepo)
+	resumeService := service.NewResumeService(resumeRepo, candidateRepo)
 	resumeHandler := handler.NewResumeHandler(resumeService)
 
 	applicationRepo := repository.NewApplicationRepository(db)
-	applicationService := service.NewApplicationService(applicationRepo)
+	applicationService := service.NewApplicationService(applicationRepo, jobRepo, resumeRepo, candidateRepo)
 	applicationHandler := handler.NewApplicationHandler(applicationService)
 
 	//public 路由
@@ -81,8 +85,14 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		private.GET("/jobs/:id/members", jobHandler.ListMembers)
 		private.POST("/jobs/:id/members", jobHandler.AssignMember)
 
+		private.GET("/candidates", candidateHandler.List)
+		private.POST("/candidates", candidateHandler.Create)
+		private.PUT("/candidates/:id", candidateHandler.Update)
+
+		private.GET("/resumes", resumeHandler.List)
 		private.POST("/resumes/upload", resumeHandler.Upload)
 
+		private.GET("/applications", applicationHandler.List)
 		private.POST("/applications", applicationHandler.Create)
 	}
 

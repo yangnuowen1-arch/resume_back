@@ -15,6 +15,7 @@ type UploadResumeRequest struct {
 type ResumeResponse struct {
 	ID               int64     `json:"id"`
 	CandidateID      *int64    `json:"candidateId"`
+	CandidateName    *string   `json:"candidateName,omitempty"`
 	OriginalFilename *string   `json:"originalFilename"`
 	FileURL          *string   `json:"fileUrl"`
 	FileType         *string   `json:"fileType"`
@@ -25,6 +26,14 @@ type ResumeResponse struct {
 	UploadedAt       time.Time `json:"uploadedAt"`
 	CreatedAt        time.Time `json:"createdAt"`
 	UpdatedAt        time.Time `json:"updatedAt"`
+}
+
+type ResumeQuery struct {
+	Page        int
+	PageSize    int
+	Keyword     string
+	CandidateID *int64
+	Language    string
 }
 
 type UploadResumeResponse struct {

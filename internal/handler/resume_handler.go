@@ -105,6 +105,57 @@ func (h *ResumeHandler) Upload(c *gin.Context) {
 	response.Created(c, result)
 }
 
+// List 查询简历列表
+// @Summary 查询简历列表
+// @Description 分页查询简历，可按候选人、关键词和语言筛选
+// @Tags 简历
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "页码" default(1)
+// @Param pageSize query int false "每页数量" default(20)
+// @Param keyword query string false "文件名/简历文本/候选人姓名关键词"
+// @Param candidateId query int false "候选人 ID"
+// @Param language query string false "简历语言"
+// @Success 200 {object} response.APIResponse
+// @Failure 400 {object} response.APIResponse
+// @Failure 401 {object} response.APIResponse
+// @Failure 500 {object} response.APIResponse
+// @Router /resumes [get]
+func (h *ResumeHandler) List(c *gin.Context) {
+	page, pageSize := parsePageParams(c)
+
+	candidateID, ok := parseOptionalInt64Query(c, "candidateId")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "candidateId 参数不合法", nil)
+		return
+	}
+
+	query := dto.ResumeQuery{
+		Page:        page,
+		PageSize:    pageSize,
+		Keyword:     c.Query("keyword"),
+		CandidateID: candidateID,
+		Language:    c.Query("language"),
+	}
+
+	items, total, err := h.service.List(c.Request.Context(), query)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
+		return
+	}
+
+	response.Success(c, response.PageResult{
+		Items: items,
+		Pagination: response.Pagination{
+			Page:       query.Page,
+			PageSize:   query.PageSize,
+			Total:      total,
+			TotalPages: totalPages(total, query.PageSize),
+		},
+	})
+}
+
 func parseOptionalInt64Form(c *gin.Context, key string) (*int64, bool) {
 	value := strings.TrimSpace(c.PostForm(key))
 	if value == "" {

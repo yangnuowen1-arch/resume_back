@@ -37,6 +37,35 @@ definitions:
     - jobId
     - resumeId
     type: object
+  dto.CreateCandidateRequest:
+    properties:
+      currentCompany:
+        type: string
+      currentPosition:
+        type: string
+      email:
+        type: string
+      gender:
+        type: string
+      highestEducation:
+        type: string
+      location:
+        type: string
+      major:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      school:
+        type: string
+      source:
+        type: string
+      yearsOfExperience:
+        type: number
+    required:
+    - name
+    type: object
   dto.CreateJobCategoryRequest:
     properties:
       description:
@@ -154,6 +183,8 @@ definitions:
     properties:
       candidateId:
         type: integer
+      candidateName:
+        type: string
       createdAt:
         type: string
       fileSize:
@@ -176,6 +207,35 @@ definitions:
         type: integer
       uploadedAt:
         type: string
+    type: object
+  dto.UpdateCandidateRequest:
+    properties:
+      currentCompany:
+        type: string
+      currentPosition:
+        type: string
+      email:
+        type: string
+      gender:
+        type: string
+      highestEducation:
+        type: string
+      location:
+        type: string
+      major:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      school:
+        type: string
+      source:
+        type: string
+      yearsOfExperience:
+        type: number
+    required:
+    - name
     type: object
   dto.UpdateJobCategoryRequest:
     properties:
@@ -290,6 +350,69 @@ info:
   version: "1.0"
 paths:
   /applications:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询投递记录，可按岗位、候选人、简历、状态、来源和关键词筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 岗位名/候选人名/简历文件名关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 岗位 ID
+        in: query
+        name: jobId
+        type: integer
+      - description: 候选人 ID
+        in: query
+        name: candidateId
+        type: integer
+      - description: 简历 ID
+        in: query
+        name: resumeId
+        type: integer
+      - description: 投递状态
+        in: query
+        name: status
+        type: string
+      - description: 投递来源
+        in: query
+        name: source
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询投递记录列表
+      tags:
+      - 投递记录
     post:
       consumes:
       - application/json
@@ -397,6 +520,130 @@ paths:
       summary: 用户注册
       tags:
       - 登录鉴权
+  /candidates:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询候选人，可按姓名、邮箱、手机号关键词和来源筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 姓名/邮箱/手机号关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 候选人来源
+        in: query
+        name: source
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询候选人列表
+      tags:
+      - 候选人
+    post:
+      consumes:
+      - application/json
+      description: 创建候选人基础档案
+      parameters:
+      - description: 创建候选人请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateCandidateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建候选人
+      tags:
+      - 候选人
+  /candidates/{id}:
+    put:
+      consumes:
+      - application/json
+      description: 根据 ID 编辑候选人基础档案
+      parameters:
+      - description: 候选人 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 编辑候选人请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateCandidateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 编辑候选人
+      tags:
+      - 候选人
   /job-categories:
     get:
       consumes:
@@ -795,6 +1042,58 @@ paths:
       summary: 给岗位绑定标签
       tags:
       - 岗位
+  /resumes:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询简历，可按候选人、关键词和语言筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 文件名/简历文本/候选人姓名关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 候选人 ID
+        in: query
+        name: candidateId
+        type: integer
+      - description: 简历语言
+        in: query
+        name: language
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询简历列表
+      tags:
+      - 简历
   /resumes/upload:
     post:
       consumes:

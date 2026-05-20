@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
@@ -11,31 +10,31 @@ import (
 	"github.com/yangnuowen1-arch/resume_back/internal/service"
 )
 
-type TagHandler struct {
-	service service.TagService
+type CandidateHandler struct {
+	service service.CandidateService
 }
 
-func NewTagHandler(service service.TagService) *TagHandler {
-	return &TagHandler{
+func NewCandidateHandler(service service.CandidateService) *CandidateHandler {
+	return &CandidateHandler{
 		service: service,
 	}
 }
 
-// Create 创建标签
-// @Summary 创建标签
-// @Description 创建一个新的岗位标签，可选择归属标签分组
-// @Tags 标签
+// Create 创建候选人
+// @Summary 创建候选人
+// @Description 创建候选人基础档案
+// @Tags 候选人
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body dto.CreateTagRequest true "创建标签请求"
+// @Param request body dto.CreateCandidateRequest true "创建候选人请求"
 // @Success 201 {object} response.APIResponse
 // @Failure 400 {object} response.APIResponse
 // @Failure 401 {object} response.APIResponse
 // @Failure 500 {object} response.APIResponse
-// @Router /tags [post]
-func (h *TagHandler) Create(c *gin.Context) {
-	var req dto.CreateTagRequest
+// @Router /candidates [post]
+func (h *CandidateHandler) Create(c *gin.Context) {
+	var req dto.CreateCandidateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, 40001, "参数错误", err.Error())
 		return
@@ -55,28 +54,28 @@ func (h *TagHandler) Create(c *gin.Context) {
 	response.Created(c, gin.H{"id": id})
 }
 
-// Update 编辑标签
-// @Summary 编辑标签
-// @Description 根据 ID 编辑标签名称、所属分组、颜色和状态
-// @Tags 标签
+// Update 编辑候选人
+// @Summary 编辑候选人
+// @Description 根据 ID 编辑候选人基础档案
+// @Tags 候选人
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "标签 ID"
-// @Param request body dto.UpdateTagRequest true "编辑标签请求"
+// @Param id path int true "候选人 ID"
+// @Param request body dto.UpdateCandidateRequest true "编辑候选人请求"
 // @Success 200 {object} response.APIResponse
 // @Failure 400 {object} response.APIResponse
 // @Failure 401 {object} response.APIResponse
 // @Failure 500 {object} response.APIResponse
-// @Router /tags/{id} [put]
-func (h *TagHandler) Update(c *gin.Context) {
+// @Router /candidates/{id} [put]
+func (h *CandidateHandler) Update(c *gin.Context) {
 	id, ok := parseInt64Param(c, "id")
 	if !ok {
-		response.Error(c, http.StatusBadRequest, 40001, "标签 ID 不合法", nil)
+		response.Error(c, http.StatusBadRequest, 40001, "候选人 ID 不合法", nil)
 		return
 	}
 
-	var req dto.UpdateTagRequest
+	var req dto.UpdateCandidateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, 40001, "参数错误", err.Error())
 		return
@@ -95,43 +94,35 @@ func (h *TagHandler) Update(c *gin.Context) {
 	response.Success(c, gin.H{"id": id})
 }
 
-// List 查询标签列表
-// @Summary 查询标签列表
-// @Description 分页查询标签，可按标签分组、名称关键词和状态筛选
-// @Tags 标签
+// List 查询候选人列表
+// @Summary 查询候选人列表
+// @Description 分页查询候选人，可按姓名、邮箱、手机号关键词和来源筛选
+// @Tags 候选人
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param page query int false "页码" default(1)
 // @Param pageSize query int false "每页数量" default(20)
-// @Param keyword query string false "关键词"
-// @Param groupId query int false "标签分组 ID"
-// @Param status query string false "状态 active/disabled" default(active)
+// @Param keyword query string false "姓名/邮箱/手机号关键词"
+// @Param source query string false "候选人来源"
 // @Success 200 {object} response.APIResponse
 // @Failure 400 {object} response.APIResponse
 // @Failure 401 {object} response.APIResponse
 // @Failure 500 {object} response.APIResponse
-// @Router /tags [get]
-func (h *TagHandler) List(c *gin.Context) {
+// @Router /candidates [get]
+func (h *CandidateHandler) List(c *gin.Context) {
 	page, pageSize := parsePageParams(c)
 
-	groupID, ok := parseOptionalInt64Query(c, "groupId")
-	if !ok {
-		response.Error(c, http.StatusBadRequest, 40001, "groupId 参数不合法", nil)
-		return
-	}
-
-	query := dto.TagQuery{
+	query := dto.CandidateQuery{
 		Page:     page,
 		PageSize: pageSize,
 		Keyword:  c.Query("keyword"),
-		GroupID:  groupID,
-		Status:   c.DefaultQuery("status", "active"),
+		Source:   c.Query("source"),
 	}
 
 	items, total, err := h.service.List(c.Request.Context(), query)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, 50001, "查询标签失败", err.Error())
+		response.Error(c, http.StatusInternalServerError, 50001, "查询候选人失败", err.Error())
 		return
 	}
 
@@ -144,18 +135,4 @@ func (h *TagHandler) List(c *gin.Context) {
 			TotalPages: totalPages(total, query.PageSize),
 		},
 	})
-}
-
-func parseOptionalInt64Query(c *gin.Context, key string) (*int64, bool) {
-	value := c.Query(key)
-	if value == "" {
-		return nil, true
-	}
-
-	id, err := strconv.ParseInt(value, 10, 64) //传了但不是正整数：返回 nil, false。
-	if err != nil || id <= 0 {
-		return nil, false
-	}
-
-	return &id, true //传了且是正整数：返回这个数字的指针, true
 }
