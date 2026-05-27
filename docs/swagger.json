@@ -506,7 +506,7 @@
                     },
                     {
                         "type": "string",
-                        "description": "状态 active/disabled",
+                        "description": "状态 active/disabled，不传或传 all 表示全部",
                         "name": "status",
                         "in": "query"
                     }
@@ -595,7 +595,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "根据 ID 编辑岗位分类名称、描述、父级分类、排序和状态",
+                "description": "根据 ID 编辑岗位分类名称、描述和状态",
                 "consumes": [
                     "application/json"
                 ],
@@ -659,7 +659,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "分页查询岗位，可按岗位分类、岗位名称关键词和状态筛选",
+                "description": "分页查询岗位，可按岗位分类、岗位名称关键词和状态筛选，并返回岗位标签",
                 "consumes": [
                     "application/json"
                 ],
@@ -737,7 +737,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建一个新的招聘岗位，支持关联岗位分类和负责人",
+                "description": "创建一个新的招聘岗位，支持关联岗位分类、负责人和岗位标签",
                 "consumes": [
                     "application/json"
                 ],
@@ -794,7 +794,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "根据 ID 编辑岗位基础信息、要求、状态、优先级和负责人",
+                "description": "根据 ID 编辑岗位基础信息、要求、状态、优先级、负责人和可选岗位标签；不传 tagIds 时不改标签，传空数组表示清空",
                 "consumes": [
                     "application/json"
                 ],
@@ -1238,6 +1238,46 @@
                 }
             }
         },
+        "/roles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "查询系统角色列表，用于用户创建和角色分配时选择",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "查询角色列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/tag-groups": {
             "get": {
                 "security": [
@@ -1279,8 +1319,7 @@
                     },
                     {
                         "type": "string",
-                        "default": "active",
-                        "description": "状态 active/disabled",
+                        "description": "状态 active/disabled，不传或传 all 表示全部",
                         "name": "status",
                         "in": "query"
                     }
@@ -1362,6 +1401,70 @@
                 }
             }
         },
+        "/tag-groups/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 编辑标签分组名称、描述和状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "标签分组"
+                ],
+                "summary": "编辑标签分组",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "标签分组 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "编辑标签分组请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateTagGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/tags": {
             "get": {
                 "security": [
@@ -1409,8 +1512,7 @@
                     },
                     {
                         "type": "string",
-                        "default": "active",
-                        "description": "状态 active/disabled",
+                        "description": "状态 active/disabled，不传或传 all 表示全部",
                         "name": "status",
                         "in": "query"
                     }
@@ -1473,6 +1575,61 @@
                 "responses": {
                     "201": {
                         "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tags/grouped": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回标签分组和每个分组下的标签，用于创建或编辑岗位时动态渲染标签选择",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "标签"
+                ],
+                "summary": "查询标签分组及组内标签",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "active",
+                        "description": "状态 active/disabled",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.APIResponse"
                         }
@@ -1561,6 +1718,399 @@
                     }
                 }
             }
+        },
+        "/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询用户，可按用户名、姓名、邮箱、手机号关键词和状态筛选；可用于岗位负责人下拉选择",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "查询用户列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户名/姓名/邮箱/手机号关键词",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "状态 active/disabled，不传或传 all 表示全部",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建系统用户，并可指定用户角色；不传 roles 时默认分配 user 角色",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "创建用户",
+                "parameters": [
+                    {
+                        "description": "创建用户请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 查询用户基础信息和角色",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "查询用户详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 编辑用户基础信息和状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "编辑用户",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "编辑用户请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 禁用用户账号；账号不会被物理删除",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "禁用用户",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/roles": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "覆盖式设置用户角色",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "分配用户角色",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "用户角色分配请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.AssignUserRolesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1576,6 +2126,20 @@
                 },
                 "userId": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.AssignUserRolesRequest": {
+            "type": "object",
+            "required": [
+                "roles"
+            ],
+            "properties": {
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -1676,11 +2240,8 @@
                 "name": {
                     "type": "string"
                 },
-                "parentId": {
-                    "type": "integer"
-                },
-                "sortOrder": {
-                    "type": "integer"
+                "status": {
+                    "type": "string"
                 }
             }
         },
@@ -1696,16 +2257,7 @@
                 "categoryId": {
                     "type": "integer"
                 },
-                "department": {
-                    "type": "string"
-                },
                 "description": {
-                    "type": "string"
-                },
-                "educationLevel": {
-                    "type": "string"
-                },
-                "employmentType": {
                     "type": "string"
                 },
                 "experienceMax": {
@@ -1741,13 +2293,13 @@
                 "status": {
                     "type": "string"
                 },
+                "tagIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "title": {
-                    "type": "string"
-                },
-                "workLocation": {
-                    "type": "string"
-                },
-                "workType": {
                     "type": "string"
                 }
             }
@@ -1764,8 +2316,8 @@
                 "name": {
                     "type": "string"
                 },
-                "sortOrder": {
-                    "type": "integer"
+                "status": {
+                    "type": "string"
                 }
             }
         },
@@ -1783,6 +2335,49 @@
                 },
                 "name": {
                     "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CreateUserRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "password": {
+                    "type": "string",
+                    "maxLength": 72,
+                    "minLength": 6
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 30
+                },
+                "realName": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 3
                 }
             }
         },
@@ -1933,12 +2528,6 @@
                 "name": {
                     "type": "string"
                 },
-                "parentId": {
-                    "type": "integer"
-                },
-                "sortOrder": {
-                    "type": "integer"
-                },
                 "status": {
                     "type": "string"
                 }
@@ -1958,16 +2547,7 @@
                 "categoryId": {
                     "type": "integer"
                 },
-                "department": {
-                    "type": "string"
-                },
                 "description": {
-                    "type": "string"
-                },
-                "educationLevel": {
-                    "type": "string"
-                },
-                "employmentType": {
                     "type": "string"
                 },
                 "experienceMax": {
@@ -2003,13 +2583,31 @@
                 "status": {
                     "type": "string"
                 },
+                "tagIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "title": {
                     "type": "string"
-                },
-                "workLocation": {
+                }
+            }
+        },
+        "dto.UpdateTagGroupRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "status"
+            ],
+            "properties": {
+                "description": {
                     "type": "string"
                 },
-                "workType": {
+                "name": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -2032,6 +2630,35 @@
                 },
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.UpdateUserRequest": {
+            "type": "object",
+            "required": [
+                "status",
+                "username"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 30
+                },
+                "realName": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "status": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 3
                 }
             }
         },

@@ -23,7 +23,7 @@ func NewJobHandler(service service.JobService) *JobHandler {
 
 // Create 创建岗位
 // @Summary 创建岗位
-// @Description 创建一个新的招聘岗位，支持关联岗位分类和负责人
+// @Description 创建一个新的招聘岗位，支持关联岗位分类、负责人和岗位标签
 // @Tags 岗位
 // @Accept json
 // @Produce json
@@ -57,7 +57,7 @@ func (h *JobHandler) Create(c *gin.Context) {
 
 // Update 编辑岗位
 // @Summary 编辑岗位
-// @Description 根据 ID 编辑岗位基础信息、要求、状态、优先级和负责人
+// @Description 根据 ID 编辑岗位基础信息、要求、状态、优先级、负责人和可选岗位标签；不传 tagIds 时不改标签，传空数组表示清空
 // @Tags 岗位
 // @Accept json
 // @Produce json
@@ -97,7 +97,7 @@ func (h *JobHandler) Update(c *gin.Context) {
 
 // List 查询岗位列表
 // @Summary 查询岗位列表
-// @Description 分页查询岗位，可按岗位分类、岗位名称关键词和状态筛选
+// @Description 分页查询岗位，可按岗位分类、岗位名称关键词和状态筛选，并返回岗位标签
 // @Tags 岗位
 // @Accept json
 // @Produce json

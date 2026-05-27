@@ -69,7 +69,7 @@ func (h *JobCategoryHandler) Create(c *gin.Context) {
 
 // Update 编辑岗位分类
 // @Summary 编辑岗位分类
-// @Description 根据 ID 编辑岗位分类名称、描述、父级分类、排序和状态
+// @Description 根据 ID 编辑岗位分类名称、描述和状态
 // @Tags 岗位分类
 // @Accept json
 // @Produce json
@@ -118,7 +118,7 @@ func (h *JobCategoryHandler) Update(c *gin.Context) {
 // @Param page query int false "页码" default(1)
 // @Param pageSize query int false "每页数量" default(20)
 // @Param keyword query string false "关键词"
-// @Param status query string false "状态 active/disabled"
+// @Param status query string false "状态 active/disabled，不传或传 all 表示全部"
 // @Success 200 {object} response.APIResponse
 // @Failure 401 {object} response.APIResponse
 // @Failure 500 {object} response.APIResponse
@@ -139,7 +139,7 @@ func (h *JobCategoryHandler) List(c *gin.Context) {
 		Page:     page,
 		PageSize: pageSize,
 		Keyword:  c.Query("keyword"),
-		Status:   c.DefaultQuery("status", "active"),
+		Status:   c.Query("status"),
 	}
 
 	items, total, err := h.service.List(c.Request.Context(), query)

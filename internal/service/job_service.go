@@ -72,20 +72,20 @@ func (s *jobService) Create(ctx context.Context, req dto.CreateJobRequest) (int6
 		}
 	}
 
+	tagIDs, err := s.normalizeAndValidateJobTagIDs(ctx, req.TagIDs)
+	if err != nil {
+		return 0, err
+	}
+
 	job := &model.Job{
 		CategoryID:       req.CategoryID,
 		Title:            req.Title,
-		Department:       req.Department,
 		Headcount:        req.Headcount,
-		WorkLocation:     req.WorkLocation,
-		WorkType:         req.WorkType,
-		EmploymentType:   req.EmploymentType,
 		SalaryMin:        req.SalaryMin,
 		SalaryMax:        req.SalaryMax,
 		SalaryMonths:     req.SalaryMonths,
 		ExperienceMin:    req.ExperienceMin,
 		ExperienceMax:    req.ExperienceMax,
-		EducationLevel:   req.EducationLevel,
 		Description:      req.Description,
 		Responsibilities: req.Responsibilities,
 		Requirements:     req.Requirements,
@@ -95,7 +95,7 @@ func (s *jobService) Create(ctx context.Context, req dto.CreateJobRequest) (int6
 		OwnerUserID:      req.OwnerUserID,
 		CreatedBy:        &userID,
 	}
-	if err := s.repo.Create(ctx, job); err != nil {
+	if err := s.repo.CreateWithTags(ctx, job, tagIDs); err != nil {
 		return 0, err
 	}
 
@@ -120,17 +120,12 @@ func (s *jobService) Update(ctx context.Context, id int64, req dto.UpdateJobRequ
 	createReq := dto.CreateJobRequest{
 		CategoryID:       req.CategoryID,
 		Title:            req.Title,
-		Department:       req.Department,
 		Headcount:        req.Headcount,
-		WorkLocation:     req.WorkLocation,
-		WorkType:         req.WorkType,
-		EmploymentType:   req.EmploymentType,
 		SalaryMin:        req.SalaryMin,
 		SalaryMax:        req.SalaryMax,
 		SalaryMonths:     req.SalaryMonths,
 		ExperienceMin:    req.ExperienceMin,
 		ExperienceMax:    req.ExperienceMax,
-		EducationLevel:   req.EducationLevel,
 		Description:      req.Description,
 		Responsibilities: req.Responsibilities,
 		Requirements:     req.Requirements,
@@ -138,6 +133,7 @@ func (s *jobService) Update(ctx context.Context, id int64, req dto.UpdateJobRequ
 		Status:           req.Status,
 		Priority:         req.Priority,
 		OwnerUserID:      req.OwnerUserID,
+		TagIDs:           req.TagIDs,
 	}
 	normalizeCreateJobRequest(&createReq)
 	if createReq.Title == "" {
@@ -181,21 +177,25 @@ func (s *jobService) Update(ctx context.Context, id int64, req dto.UpdateJobRequ
 		}
 	}
 
+	syncTags := req.TagIDs != nil
+	tagIDs := []int64(nil)
+	if syncTags {
+		tagIDs, err = s.normalizeAndValidateJobTagIDs(ctx, req.TagIDs)
+		if err != nil {
+			return err
+		}
+	}
+
 	job := &model.Job{
 		ID:               id,
 		CategoryID:       createReq.CategoryID,
 		Title:            createReq.Title,
-		Department:       createReq.Department,
 		Headcount:        createReq.Headcount,
-		WorkLocation:     createReq.WorkLocation,
-		WorkType:         createReq.WorkType,
-		EmploymentType:   createReq.EmploymentType,
 		SalaryMin:        createReq.SalaryMin,
 		SalaryMax:        createReq.SalaryMax,
 		SalaryMonths:     createReq.SalaryMonths,
 		ExperienceMin:    createReq.ExperienceMin,
 		ExperienceMax:    createReq.ExperienceMax,
-		EducationLevel:   createReq.EducationLevel,
 		Description:      createReq.Description,
 		Responsibilities: createReq.Responsibilities,
 		Requirements:     createReq.Requirements,
@@ -205,7 +205,7 @@ func (s *jobService) Update(ctx context.Context, id int64, req dto.UpdateJobRequ
 		OwnerUserID:      createReq.OwnerUserID,
 	}
 
-	return s.repo.Update(ctx, job)
+	return s.repo.UpdateWithTags(ctx, job, tagIDs, syncTags)
 }
 
 func (s *jobService) List(ctx context.Context, query dto.JobQuery) ([]dto.JobResponse, int64, error) {
@@ -216,9 +216,24 @@ func (s *jobService) List(ctx context.Context, query dto.JobQuery) ([]dto.JobRes
 		return nil, 0, err
 	}
 
+	jobIDs := make([]int64, 0, len(items))
+	for _, item := range items {
+		jobIDs = append(jobIDs, item.ID)
+	}
+
+	tags, err := s.repo.ListTagsByJobIDs(ctx, jobIDs)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	tagsByJobID := make(map[int64][]dto.JobTagResponse, len(items))
+	for _, item := range tags {
+		tagsByJobID[item.JobID] = append(tagsByJobID[item.JobID], toJobTagResponse(item))
+	}
+
 	result := make([]dto.JobResponse, 0, len(items))
 	for _, item := range items {
-		result = append(result, toJobResponse(item))
+		result = append(result, toJobResponse(item, tagsByJobID[item.ID]))
 	}
 
 	return result, total, nil
@@ -272,15 +287,7 @@ func (s *jobService) ListTags(ctx context.Context, jobID int64) ([]dto.JobTagRes
 
 	result := make([]dto.JobTagResponse, 0, len(items))
 	for _, item := range items {
-		result = append(result, dto.JobTagResponse{
-			JobID:     item.JobID,
-			TagID:     item.TagID,
-			GroupID:   item.GroupID,
-			Name:      item.Name,
-			Color:     item.Color,
-			Status:    item.Status,
-			CreatedAt: item.CreatedAt,
-		})
+		result = append(result, toJobTagResponse(item))
 	}
 
 	return result, nil
@@ -368,11 +375,6 @@ func (s *jobService) ListMembers(ctx context.Context, jobID int64) ([]dto.JobMem
 // 岗位字段比较多，把去空格和默认值集中在这里，避免 Create 和 Update 重复写同样逻辑。
 func normalizeCreateJobRequest(req *dto.CreateJobRequest) {
 	req.Title = strings.TrimSpace(req.Title)
-	req.Department = trimOptionalString(req.Department)
-	req.WorkLocation = trimOptionalString(req.WorkLocation)
-	req.WorkType = trimOptionalString(req.WorkType)
-	req.EmploymentType = trimOptionalString(req.EmploymentType)
-	req.EducationLevel = trimOptionalString(req.EducationLevel)
 	req.Description = trimOptionalString(req.Description)
 	req.Responsibilities = trimOptionalString(req.Responsibilities)
 	req.Requirements = trimOptionalString(req.Requirements)
@@ -386,6 +388,26 @@ func normalizeCreateJobRequest(req *dto.CreateJobRequest) {
 	if req.Priority == "" {
 		req.Priority = "normal"
 	}
+}
+
+func (s *jobService) normalizeAndValidateJobTagIDs(ctx context.Context, ids []int64) ([]int64, error) {
+	tagIDs := uniquePositiveIDs(ids)
+	if len(tagIDs) != len(ids) {
+		return nil, errors.New("标签 ID 不能为空或重复")
+	}
+	if len(tagIDs) == 0 {
+		return tagIDs, nil
+	}
+
+	count, err := s.repo.CountTagsByIDs(ctx, tagIDs)
+	if err != nil {
+		return nil, err
+	}
+	if count != int64(len(tagIDs)) {
+		return nil, errors.New("部分标签不存在")
+	}
+
+	return tagIDs, nil
 }
 
 // normalizeJobQuery 统一处理岗位列表查询参数。
@@ -426,22 +448,21 @@ func uniquePositiveIDs(ids []int64) []int64 {
 
 // toJobResponse 把数据库模型转换成返回给前端的 DTO。
 // 这样 handler 不直接暴露 model，也能把“数据库字段”和“接口返回字段”的转换集中管理。
-func toJobResponse(job *model.Job) dto.JobResponse {
+func toJobResponse(job *model.Job, tags []dto.JobTagResponse) dto.JobResponse {
+	if tags == nil {
+		tags = []dto.JobTagResponse{}
+	}
+
 	return dto.JobResponse{
 		ID:               job.ID,
 		CategoryID:       job.CategoryID,
 		Title:            job.Title,
-		Department:       job.Department,
 		Headcount:        job.Headcount,
-		WorkLocation:     job.WorkLocation,
-		WorkType:         job.WorkType,
-		EmploymentType:   job.EmploymentType,
 		SalaryMin:        job.SalaryMin,
 		SalaryMax:        job.SalaryMax,
 		SalaryMonths:     job.SalaryMonths,
 		ExperienceMin:    job.ExperienceMin,
 		ExperienceMax:    job.ExperienceMax,
-		EducationLevel:   job.EducationLevel,
 		Description:      job.Description,
 		Responsibilities: job.Responsibilities,
 		Requirements:     job.Requirements,
@@ -454,5 +475,18 @@ func toJobResponse(job *model.Job) dto.JobResponse {
 		ClosedAt:         job.ClosedAt,
 		CreatedAt:        job.CreatedAt,
 		UpdatedAt:        job.UpdatedAt,
+		Tags:             tags,
+	}
+}
+
+func toJobTagResponse(item repository.JobTagWithTag) dto.JobTagResponse {
+	return dto.JobTagResponse{
+		JobID:     item.JobID,
+		TagID:     item.TagID,
+		GroupID:   item.GroupID,
+		Name:      item.Name,
+		Color:     item.Color,
+		Status:    item.Status,
+		CreatedAt: item.CreatedAt,
 	}
 }

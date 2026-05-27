@@ -39,8 +39,12 @@ func (s *jobCategoryService) Create(
 
 	req.Name = strings.TrimSpace(req.Name)
 	req.Description = trimOptionalString(req.Description)
+	req.Status = normalizeActiveDisabledStatus(req.Status)
 	if req.Name == "" {
 		return 0, errors.New("岗位分类名称不能为空")
+	}
+	if err := validateActiveDisabledStatus(req.Status, "岗位分类状态"); err != nil {
+		return 0, err
 	}
 
 	exists, err := s.repo.ExistsByName(ctx, req.Name)
@@ -52,20 +56,11 @@ func (s *jobCategoryService) Create(
 		return 0, errors.New("岗位分类名称已存在")
 	}
 
-	if req.ParentID != nil {
-		_, err := s.repo.FindByID(ctx, *req.ParentID)
-		if err != nil {
-			return 0, errors.New("父级分类不存在")
-		}
-	}
-
 	// 取局部变量地址赋给 CreatedBy，避免直接取结构体字段地址带来的可读性问题。
 	category := &model.JobCategory{
 		Name:        req.Name,
 		Description: req.Description,
-		ParentID:    req.ParentID,
-		SortOrder:   req.SortOrder,
-		Status:      "active",
+		Status:      req.Status,
 		CreatedBy:   &userID,
 	}
 
@@ -87,12 +82,12 @@ func (s *jobCategoryService) Update(ctx context.Context, id int64, req dto.Updat
 
 	req.Name = strings.TrimSpace(req.Name)
 	req.Description = trimOptionalString(req.Description)
-	req.Status = strings.TrimSpace(req.Status)
+	req.Status = normalizeActiveDisabledStatus(req.Status)
 	if req.Name == "" {
 		return errors.New("岗位分类名称不能为空")
 	}
-	if req.Status == "" {
-		return errors.New("岗位分类状态不能为空")
+	if err := validateActiveDisabledStatus(req.Status, "岗位分类状态"); err != nil {
+		return err
 	}
 
 	if _, err := s.repo.FindByID(ctx, id); err != nil {
@@ -107,22 +102,11 @@ func (s *jobCategoryService) Update(ctx context.Context, id int64, req dto.Updat
 		return errors.New("岗位分类名称已存在")
 	}
 
-	if req.ParentID != nil {
-		if *req.ParentID == id {
-			return errors.New("父级分类不能是自己")
-		}
-		if _, err := s.repo.FindByID(ctx, *req.ParentID); err != nil {
-			return errors.New("父级分类不存在")
-		}
-	}
-
 	// 将清洗和校验后的请求数据组装成数据库模型，再交给 repository 执行更新。
 	category := &model.JobCategory{
 		ID:          id,
 		Name:        req.Name,
 		Description: req.Description,
-		ParentID:    req.ParentID,
-		SortOrder:   req.SortOrder,
 		Status:      req.Status,
 	}
 
@@ -140,6 +124,7 @@ func (s *jobCategoryService) List(
 	if query.PageSize < 1 || query.PageSize > 100 {
 		query.PageSize = 20
 	}
+	query.Status = normalizeStatusFilter(query.Status)
 
 	items, total, err := s.repo.List(
 		ctx,
@@ -164,8 +149,6 @@ func (s *jobCategoryService) List(
 			ID:          item.ID,
 			Name:        item.Name,
 			Description: item.Description,
-			ParentID:    item.ParentID,
-			SortOrder:   item.SortOrder,
 			Status:      item.Status,
 			CreatedAt:   item.CreatedAt,
 			UpdatedAt:   item.UpdatedAt,

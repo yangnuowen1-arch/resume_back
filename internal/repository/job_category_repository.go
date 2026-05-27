@@ -44,8 +44,6 @@ func (r *jobCategoryRepository) Update(ctx context.Context, category *model.JobC
 		Updates(map[string]interface{}{
 			"name":        category.Name,
 			"description": category.Description,
-			"parent_id":   category.ParentID,
-			"sort_order":  category.SortOrder,
 			"status":      category.Status,
 		}).Error
 }
@@ -113,10 +111,10 @@ func (r *jobCategoryRepository) List(
 	offset := (page - 1) * pageSize
 
 	items, err := queryBuilder.
-		Order(jc.SortOrder, jc.ID.Desc()). // 排序
-		Limit(pageSize).                   // 每页取几条
-		Offset(offset).                    // 从第几条开始取
-		Find()                             // 执行查询，返回结果
+		Order(jc.ID.Desc()). // 按新建时间倒序展示
+		Limit(pageSize).     // 每页取几条
+		Offset(offset).      // 从第几条开始取
+		Find()               // 执行查询，返回结果
 
 	if err != nil {
 		return nil, 0, err

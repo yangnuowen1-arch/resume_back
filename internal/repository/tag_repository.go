@@ -14,6 +14,7 @@ type TagRepository interface {
 	ExistsByNameInGroup(ctx context.Context, name string, groupID *int64) (bool, error)
 	ExistsByNameInGroupExceptID(ctx context.Context, name string, groupID *int64, id int64) (bool, error)
 	List(ctx context.Context, keyword string, groupID *int64, status string, page int, pageSize int) ([]*model.Tag, int64, error)
+	ListByGroupIDs(ctx context.Context, groupIDs []int64, status string) ([]*model.Tag, error)
 }
 
 type tagRepository struct {
@@ -131,4 +132,28 @@ func (r *tagRepository) List(
 	}
 
 	return items, total, nil
+}
+
+func (r *tagRepository) ListByGroupIDs(ctx context.Context, groupIDs []int64, status string) ([]*model.Tag, error) {
+	if len(groupIDs) == 0 {
+		return []*model.Tag{}, nil
+	}
+
+	queryBuilder := r.db.WithContext(ctx).
+		Model(&model.Tag{}).
+		Where("group_id IN ?", groupIDs)
+
+	if status != "" {
+		queryBuilder = queryBuilder.Where("status = ?", status)
+	}
+
+	items := make([]*model.Tag, 0)
+	err := queryBuilder.
+		Order("group_id ASC, id DESC").
+		Find(&items).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }

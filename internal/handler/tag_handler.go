@@ -106,7 +106,7 @@ func (h *TagHandler) Update(c *gin.Context) {
 // @Param pageSize query int false "每页数量" default(20)
 // @Param keyword query string false "关键词"
 // @Param groupId query int false "标签分组 ID"
-// @Param status query string false "状态 active/disabled" default(active)
+// @Param status query string false "状态 active/disabled，不传或传 all 表示全部"
 // @Success 200 {object} response.APIResponse
 // @Failure 400 {object} response.APIResponse
 // @Failure 401 {object} response.APIResponse
@@ -126,7 +126,7 @@ func (h *TagHandler) List(c *gin.Context) {
 		PageSize: pageSize,
 		Keyword:  c.Query("keyword"),
 		GroupID:  groupID,
-		Status:   c.DefaultQuery("status", "active"),
+		Status:   c.Query("status"),
 	}
 
 	items, total, err := h.service.List(c.Request.Context(), query)
@@ -144,6 +144,34 @@ func (h *TagHandler) List(c *gin.Context) {
 			TotalPages: totalPages(total, query.PageSize),
 		},
 	})
+}
+
+// ListGrouped 查询标签分组及组内标签
+// @Summary 查询标签分组及组内标签
+// @Description 返回标签分组和每个分组下的标签，用于创建或编辑岗位时动态渲染标签选择
+// @Tags 标签
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param status query string false "状态 active/disabled" default(active)
+// @Success 200 {object} response.APIResponse
+// @Failure 400 {object} response.APIResponse
+// @Failure 401 {object} response.APIResponse
+// @Failure 500 {object} response.APIResponse
+// @Router /tags/grouped [get]
+func (h *TagHandler) ListGrouped(c *gin.Context) {
+	items, err := h.service.ListGrouped(c.Request.Context(), c.DefaultQuery("status", "active"))
+	if err != nil {
+		if errors.Is(err, service.ErrUnauthenticated) {
+			response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
+			return
+		}
+
+		response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
+		return
+	}
+
+	response.Success(c, items)
 }
 
 func parseOptionalInt64Query(c *gin.Context, key string) (*int64, bool) {

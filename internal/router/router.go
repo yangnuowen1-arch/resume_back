@@ -1,6 +1,9 @@
 package router
 
 import (
+	"context"
+	"log"
+
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/yangnuowen1-arch/resume_back/internal/config"
@@ -8,6 +11,7 @@ import (
 	"github.com/yangnuowen1-arch/resume_back/internal/middleware"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
 	"github.com/yangnuowen1-arch/resume_back/internal/service"
+	"github.com/yangnuowen1-arch/resume_back/internal/storage"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/yangnuowen1-arch/resume_back/docs"
@@ -26,6 +30,8 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	userRepo := repository.NewUserRepository(db)
 	authService := service.NewAuthService(userRepo, cfg)
 	authHandler := handler.NewAuthHandler(authService)
+	userService := service.NewUserService(userRepo)
+	userHandler := handler.NewUserHandler(userService)
 
 	jobCategoryRepo := repository.NewJobCategoryRepository(db)
 	jobCategoryService := service.NewJobCategoryService(jobCategoryRepo)
@@ -49,7 +55,21 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	resumeRepo := repository.NewResumeRepository(db)
 	resumeService := service.NewResumeService(resumeRepo, candidateRepo)
-	resumeHandler := handler.NewResumeHandler(resumeService)
+	resumeUploader := storage.Uploader(storage.NewLocalUploader("uploads"))
+	if cfg.R2Enabled() {
+		r2Uploader, err := storage.NewR2Uploader(context.Background(), storage.R2Config{
+			Endpoint:        cfg.R2Endpoint,
+			Bucket:          cfg.R2Bucket,
+			AccessKeyID:     cfg.R2AccessKeyID,
+			SecretAccessKey: cfg.R2SecretAccessKey,
+			PublicBaseURL:   cfg.R2PublicBaseURL,
+		})
+		if err != nil {
+			log.Fatalf("R2 初始化失败: %v", err)
+		}
+		resumeUploader = r2Uploader
+	}
+	resumeHandler := handler.NewResumeHandler(resumeService, resumeUploader)
 
 	applicationRepo := repository.NewApplicationRepository(db)
 	applicationService := service.NewApplicationService(applicationRepo, jobRepo, resumeRepo, candidateRepo)
@@ -72,10 +92,20 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 		private.GET("/tag-groups", tagGroupHandler.List)
 		private.POST("/tag-groups", tagGroupHandler.Create)
+		private.PUT("/tag-groups/:id", tagGroupHandler.Update)
 
+		private.GET("/tags/grouped", tagHandler.ListGrouped)
 		private.GET("/tags", tagHandler.List)
 		private.POST("/tags", tagHandler.Create)
 		private.PUT("/tags/:id", tagHandler.Update)
+
+		private.GET("/roles", userHandler.ListRoles)
+		private.GET("/users", userHandler.List)
+		private.POST("/users", userHandler.Create)
+		private.GET("/users/:id", userHandler.Get)
+		private.PUT("/users/:id", userHandler.Update)
+		private.DELETE("/users/:id", userHandler.Delete)
+		private.PUT("/users/:id/roles", userHandler.AssignRoles)
 
 		private.GET("/jobs", jobHandler.List)
 		private.POST("/jobs", jobHandler.Create)

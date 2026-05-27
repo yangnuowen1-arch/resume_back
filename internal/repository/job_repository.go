@@ -34,7 +34,9 @@ type JobMemberWithUser struct {
 
 type JobRepository interface {
 	Create(ctx context.Context, job *model.Job) error
+	CreateWithTags(ctx context.Context, job *model.Job, tagIDs []int64) error
 	Update(ctx context.Context, job *model.Job) error
+	UpdateWithTags(ctx context.Context, job *model.Job, tagIDs []int64, syncTags bool) error
 	FindByID(ctx context.Context, id int64) (*model.Job, error)
 	List(ctx context.Context, keyword string, categoryID *int64, status string, page int, pageSize int) ([]*model.Job, int64, error)
 
@@ -50,6 +52,7 @@ type JobRepository interface {
 	// BindTags 给岗位重新绑定标签，会先清空旧关联，再写入新的岗位-标签关系。
 	BindTags(ctx context.Context, jobID int64, tagIDs []int64) error
 	ListTags(ctx context.Context, jobID int64) ([]JobTagWithTag, error)
+	ListTagsByJobIDs(ctx context.Context, jobIDs []int64) ([]JobTagWithTag, error)
 
 	// AssignMember 给岗位分配成员；如果该用户已是岗位成员，则更新成员角色。
 	AssignMember(ctx context.Context, member *model.JobMember) error
@@ -70,24 +73,46 @@ func (r *jobRepository) Create(ctx context.Context, job *model.Job) error {
 	return r.db.WithContext(ctx).Create(job).Error
 }
 
+func (r *jobRepository) CreateWithTags(ctx context.Context, job *model.Job, tagIDs []int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(job).Error; err != nil {
+			return err
+		}
+
+		return replaceJobTags(tx, job.ID, tagIDs)
+	})
+}
+
 func (r *jobRepository) Update(ctx context.Context, job *model.Job) error {
-	return r.db.WithContext(ctx).
+	return updateJobFields(r.db.WithContext(ctx), job)
+}
+
+func (r *jobRepository) UpdateWithTags(ctx context.Context, job *model.Job, tagIDs []int64, syncTags bool) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := updateJobFields(tx, job); err != nil {
+			return err
+		}
+		if !syncTags {
+			return nil
+		}
+
+		return replaceJobTags(tx, job.ID, tagIDs)
+	})
+}
+
+func updateJobFields(db *gorm.DB, job *model.Job) error {
+	return db.
 		Model(&model.Job{}).
 		Where("id = ?", job.ID).
 		Updates(map[string]interface{}{
 			"category_id":      job.CategoryID,
 			"title":            job.Title,
-			"department":       job.Department,
 			"headcount":        job.Headcount,
-			"work_location":    job.WorkLocation,
-			"work_type":        job.WorkType,
-			"employment_type":  job.EmploymentType,
 			"salary_min":       job.SalaryMin,
 			"salary_max":       job.SalaryMax,
 			"salary_months":    job.SalaryMonths,
 			"experience_min":   job.ExperienceMin,
 			"experience_max":   job.ExperienceMax,
-			"education_level":  job.EducationLevel,
 			"description":      job.Description,
 			"responsibilities": job.Responsibilities,
 			"requirements":     job.Requirements,
@@ -191,24 +216,28 @@ func (r *jobRepository) CountTagsByIDs(ctx context.Context, ids []int64) (int64,
 
 func (r *jobRepository) BindTags(ctx context.Context, jobID int64, tagIDs []int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("job_id = ?", jobID).Delete(&model.JobTag{}).Error; err != nil {
-			return err
-		}
-
-		if len(tagIDs) == 0 {
-			return nil
-		}
-
-		jobTags := make([]*model.JobTag, 0, len(tagIDs))
-		for _, tagID := range tagIDs {
-			jobTags = append(jobTags, &model.JobTag{
-				JobID: jobID,
-				TagID: tagID,
-			})
-		}
-
-		return tx.Create(jobTags).Error
+		return replaceJobTags(tx, jobID, tagIDs)
 	})
+}
+
+func replaceJobTags(tx *gorm.DB, jobID int64, tagIDs []int64) error {
+	if err := tx.Where("job_id = ?", jobID).Delete(&model.JobTag{}).Error; err != nil {
+		return err
+	}
+
+	if len(tagIDs) == 0 {
+		return nil
+	}
+
+	jobTags := make([]*model.JobTag, 0, len(tagIDs))
+	for _, tagID := range tagIDs {
+		jobTags = append(jobTags, &model.JobTag{
+			JobID: jobID,
+			TagID: tagID,
+		})
+	}
+
+	return tx.Create(jobTags).Error
 }
 
 func (r *jobRepository) ListTags(ctx context.Context, jobID int64) ([]JobTagWithTag, error) {
@@ -219,6 +248,26 @@ func (r *jobRepository) ListTags(ctx context.Context, jobID int64) ([]JobTagWith
 		Joins("JOIN "+model.TableNameTag+" ON tags.id = job_tags.tag_id").
 		Where("job_tags.job_id = ?", jobID).
 		Order("tags.id ASC").
+		Scan(&items).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (r *jobRepository) ListTagsByJobIDs(ctx context.Context, jobIDs []int64) ([]JobTagWithTag, error) {
+	if len(jobIDs) == 0 {
+		return []JobTagWithTag{}, nil
+	}
+
+	items := make([]JobTagWithTag, 0)
+	err := r.db.WithContext(ctx).
+		Table(model.TableNameJobTag).
+		Select("job_tags.job_id, job_tags.tag_id, tags.group_id, tags.name, tags.color, tags.status, job_tags.created_at").
+		Joins("JOIN "+model.TableNameTag+" ON tags.id = job_tags.tag_id").
+		Where("job_tags.job_id IN ?", jobIDs).
+		Order("job_tags.job_id ASC, tags.id ASC").
 		Scan(&items).Error
 	if err != nil {
 		return nil, err

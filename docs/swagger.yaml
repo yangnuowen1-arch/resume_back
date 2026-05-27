@@ -10,6 +10,15 @@ definitions:
     - memberRole
     - userId
     type: object
+  dto.AssignUserRolesRequest:
+    properties:
+      roles:
+        items:
+          type: string
+        type: array
+    required:
+    - roles
+    type: object
   dto.BindJobTagsRequest:
     properties:
       tagIds:
@@ -72,10 +81,8 @@ definitions:
         type: string
       name:
         type: string
-      parentId:
-        type: integer
-      sortOrder:
-        type: integer
+      status:
+        type: string
     required:
     - name
     type: object
@@ -85,13 +92,7 @@ definitions:
         type: string
       categoryId:
         type: integer
-      department:
-        type: string
       description:
-        type: string
-      educationLevel:
-        type: string
-      employmentType:
         type: string
       experienceMax:
         type: integer
@@ -115,11 +116,11 @@ definitions:
         type: integer
       status:
         type: string
+      tagIds:
+        items:
+          type: integer
+        type: array
       title:
-        type: string
-      workLocation:
-        type: string
-      workType:
         type: string
     required:
     - title
@@ -130,8 +131,8 @@ definitions:
         type: string
       name:
         type: string
-      sortOrder:
-        type: integer
+      status:
+        type: string
     required:
     - name
     type: object
@@ -143,8 +144,39 @@ definitions:
         type: integer
       name:
         type: string
+      status:
+        type: string
     required:
     - name
+    type: object
+  dto.CreateUserRequest:
+    properties:
+      email:
+        maxLength: 100
+        type: string
+      password:
+        maxLength: 72
+        minLength: 6
+        type: string
+      phone:
+        maxLength: 30
+        type: string
+      realName:
+        maxLength: 50
+        type: string
+      roles:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - password
+    - username
     type: object
   dto.LoginRequest:
     properties:
@@ -243,10 +275,6 @@ definitions:
         type: string
       name:
         type: string
-      parentId:
-        type: integer
-      sortOrder:
-        type: integer
       status:
         type: string
     required:
@@ -259,13 +287,7 @@ definitions:
         type: string
       categoryId:
         type: integer
-      department:
-        type: string
       description:
-        type: string
-      educationLevel:
-        type: string
-      employmentType:
         type: string
       experienceMax:
         type: integer
@@ -289,16 +311,28 @@ definitions:
         type: integer
       status:
         type: string
+      tagIds:
+        items:
+          type: integer
+        type: array
       title:
-        type: string
-      workLocation:
-        type: string
-      workType:
         type: string
     required:
     - priority
     - status
     - title
+    type: object
+  dto.UpdateTagGroupRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+    required:
+    - name
+    - status
     type: object
   dto.UpdateTagRequest:
     properties:
@@ -313,6 +347,27 @@ definitions:
     required:
     - name
     - status
+    type: object
+  dto.UpdateUserRequest:
+    properties:
+      email:
+        maxLength: 100
+        type: string
+      phone:
+        maxLength: 30
+        type: string
+      realName:
+        maxLength: 50
+        type: string
+      status:
+        type: string
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - status
+    - username
     type: object
   dto.UploadResumeResponse:
     properties:
@@ -664,7 +719,7 @@ paths:
         in: query
         name: keyword
         type: string
-      - description: 状态 active/disabled
+      - description: 状态 active/disabled，不传或传 all 表示全部
         in: query
         name: status
         type: string
@@ -727,7 +782,7 @@ paths:
     put:
       consumes:
       - application/json
-      description: 根据 ID 编辑岗位分类名称、描述、父级分类、排序和状态
+      description: 根据 ID 编辑岗位分类名称、描述和状态
       parameters:
       - description: 岗位分类 ID
         in: path
@@ -768,7 +823,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: 分页查询岗位，可按岗位分类、岗位名称关键词和状态筛选
+      description: 分页查询岗位，可按岗位分类、岗位名称关键词和状态筛选，并返回岗位标签
       parameters:
       - default: 1
         description: 页码
@@ -819,7 +874,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 创建一个新的招聘岗位，支持关联岗位分类和负责人
+      description: 创建一个新的招聘岗位，支持关联岗位分类、负责人和岗位标签
       parameters:
       - description: 创建岗位请求
         in: body
@@ -855,7 +910,7 @@ paths:
     put:
       consumes:
       - application/json
-      description: 根据 ID 编辑岗位基础信息、要求、状态、优先级和负责人
+      description: 根据 ID 编辑岗位基础信息、要求、状态、优先级、负责人和可选岗位标签；不传 tagIds 时不改标签，传空数组表示清空
       parameters:
       - description: 岗位 ID
         in: path
@@ -1141,6 +1196,31 @@ paths:
       summary: 上传简历
       tags:
       - 简历
+  /roles:
+    get:
+      consumes:
+      - application/json
+      description: 查询系统角色列表，用于用户创建和角色分配时选择
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询角色列表
+      tags:
+      - 用户
   /tag-groups:
     get:
       consumes:
@@ -1161,8 +1241,7 @@ paths:
         in: query
         name: keyword
         type: string
-      - default: active
-        description: 状态 active/disabled
+      - description: 状态 active/disabled，不传或传 all 表示全部
         in: query
         name: status
         type: string
@@ -1221,6 +1300,47 @@ paths:
       summary: 创建标签分组
       tags:
       - 标签分组
+  /tag-groups/{id}:
+    put:
+      consumes:
+      - application/json
+      description: 根据 ID 编辑标签分组名称、描述和状态
+      parameters:
+      - description: 标签分组 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 编辑标签分组请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateTagGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 编辑标签分组
+      tags:
+      - 标签分组
   /tags:
     get:
       consumes:
@@ -1245,8 +1365,7 @@ paths:
         in: query
         name: groupId
         type: integer
-      - default: active
-        description: 状态 active/disabled
+      - description: 状态 active/disabled，不传或传 all 表示全部
         in: query
         name: status
         type: string
@@ -1350,6 +1469,294 @@ paths:
       summary: 编辑标签
       tags:
       - 标签
+  /tags/grouped:
+    get:
+      consumes:
+      - application/json
+      description: 返回标签分组和每个分组下的标签，用于创建或编辑岗位时动态渲染标签选择
+      parameters:
+      - default: active
+        description: 状态 active/disabled
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询标签分组及组内标签
+      tags:
+      - 标签
+  /users:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询用户，可按用户名、姓名、邮箱、手机号关键词和状态筛选；可用于岗位负责人下拉选择
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 用户名/姓名/邮箱/手机号关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 状态 active/disabled，不传或传 all 表示全部
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询用户列表
+      tags:
+      - 用户
+    post:
+      consumes:
+      - application/json
+      description: 创建系统用户，并可指定用户角色；不传 roles 时默认分配 user 角色
+      parameters:
+      - description: 创建用户请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建用户
+      tags:
+      - 用户
+  /users/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 根据 ID 禁用用户账号；账号不会被物理删除
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 禁用用户
+      tags:
+      - 用户
+    get:
+      consumes:
+      - application/json
+      description: 根据 ID 查询用户基础信息和角色
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询用户详情
+      tags:
+      - 用户
+    put:
+      consumes:
+      - application/json
+      description: 根据 ID 编辑用户基础信息和状态
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 编辑用户请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 编辑用户
+      tags:
+      - 用户
+  /users/{id}/roles:
+    put:
+      consumes:
+      - application/json
+      description: 覆盖式设置用户角色
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 用户角色分配请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AssignUserRolesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 分配用户角色
+      tags:
+      - 用户
 securityDefinitions:
   BearerAuth:
     in: header

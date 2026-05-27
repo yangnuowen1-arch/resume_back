@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,17 +12,18 @@ import (
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
 	"github.com/yangnuowen1-arch/resume_back/internal/response"
 	"github.com/yangnuowen1-arch/resume_back/internal/service"
+	"github.com/yangnuowen1-arch/resume_back/internal/storage"
 )
 
-const resumeUploadDir = "uploads/resumes"
-
 type ResumeHandler struct {
-	service service.ResumeService
+	service  service.ResumeService
+	uploader storage.Uploader
 }
 
-func NewResumeHandler(service service.ResumeService) *ResumeHandler {
+func NewResumeHandler(service service.ResumeService, uploader storage.Uploader) *ResumeHandler {
 	return &ResumeHandler{
-		service: service,
+		service:  service,
+		uploader: uploader,
 	}
 }
 
@@ -56,34 +56,27 @@ func (h *ResumeHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	if err := os.MkdirAll(resumeUploadDir, 0755); err != nil {
-		response.Error(c, http.StatusInternalServerError, 50001, "创建上传目录失败", err.Error())
-		return
-	}
-
 	// 只保留原始文件名，避免客户端传入带目录的文件名影响服务端保存路径。
 	originalFilename := filepath.Base(file.Filename)
 	// 取出文件扩展名并转成小写，后面生成服务端文件名时继续保留文件类型。
 	ext := strings.ToLower(filepath.Ext(originalFilename))
-	// 用 UUID 生成新的保存文件名，避免不同用户上传同名文件时互相覆盖。
-	savedFilename := uuid.NewString() + ext
-	// 拼出文件最终保存到服务端磁盘的位置。
-	savedPath := filepath.Join(resumeUploadDir, savedFilename)
-
-	if err := c.SaveUploadedFile(file, savedPath); err != nil {
-		response.Error(c, http.StatusInternalServerError, 50001, "保存简历文件失败", err.Error())
-		return
-	}
 
 	fileType := file.Header.Get("Content-Type")
 	if fileType == "" {
 		fileType = strings.TrimPrefix(ext, ".")
 	}
 
+	objectKey := "resumes/" + uuid.NewString() + ext
+	uploadResult, err := h.uploader.Upload(c.Request.Context(), objectKey, file, fileType)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, 50001, "上传简历文件失败", err.Error())
+		return
+	}
+
 	req := dto.UploadResumeRequest{
 		CandidateID:      candidateID,
 		OriginalFilename: originalFilename,
-		FileURL:          "/" + filepath.ToSlash(savedPath),
+		FileURL:          uploadResult.URL,
 		FileType:         fileType,
 		FileSize:         file.Size,
 		RawText:          optionalFormString(c, "rawText"),
@@ -92,7 +85,7 @@ func (h *ResumeHandler) Upload(c *gin.Context) {
 
 	result, err := h.service.CreateUploadedResume(c.Request.Context(), req)
 	if err != nil {
-		_ = os.Remove(savedPath)
+		_ = h.uploader.Delete(c.Request.Context(), uploadResult.Key)
 		if errors.Is(err, service.ErrUnauthenticated) {
 			response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
 			return

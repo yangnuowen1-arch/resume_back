@@ -12,6 +12,7 @@ import (
 
 type TagGroupService interface {
 	Create(ctx context.Context, req dto.CreateTagGroupRequest) (int64, error)
+	Update(ctx context.Context, id int64, req dto.UpdateTagGroupRequest) error
 	List(ctx context.Context, query dto.TagGroupQuery) ([]dto.TagGroupResponse, int64, error)
 }
 
@@ -33,8 +34,12 @@ func (s *tagGroupService) Create(ctx context.Context, req dto.CreateTagGroupRequ
 
 	req.Name = strings.TrimSpace(req.Name)
 	req.Description = trimOptionalString(req.Description)
+	req.Status = normalizeActiveDisabledStatus(req.Status)
 	if req.Name == "" {
 		return 0, errors.New("标签分组名称不能为空")
+	}
+	if err := validateActiveDisabledStatus(req.Status, "标签分组状态"); err != nil {
+		return 0, err
 	}
 
 	exists, err := s.repo.ExistsByName(ctx, req.Name)
@@ -48,8 +53,7 @@ func (s *tagGroupService) Create(ctx context.Context, req dto.CreateTagGroupRequ
 	group := &model.TagGroup{
 		Name:        req.Name,
 		Description: req.Description,
-		SortOrder:   req.SortOrder,
-		Status:      "active",
+		Status:      req.Status,
 		CreatedBy:   &userID,
 	}
 	if err := s.repo.Create(ctx, group); err != nil {
@@ -57,6 +61,47 @@ func (s *tagGroupService) Create(ctx context.Context, req dto.CreateTagGroupRequ
 	}
 
 	return group.ID, nil
+}
+
+func (s *tagGroupService) Update(ctx context.Context, id int64, req dto.UpdateTagGroupRequest) error {
+	if _, err := currentUserID(ctx); err != nil {
+		return err
+	}
+
+	if id <= 0 {
+		return errors.New("标签分组 ID 不合法")
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	req.Description = trimOptionalString(req.Description)
+	req.Status = normalizeActiveDisabledStatus(req.Status)
+	if req.Name == "" {
+		return errors.New("标签分组名称不能为空")
+	}
+	if err := validateActiveDisabledStatus(req.Status, "标签分组状态"); err != nil {
+		return err
+	}
+
+	if _, err := s.repo.FindByID(ctx, id); err != nil {
+		return errors.New("标签分组不存在")
+	}
+
+	exists, err := s.repo.ExistsByNameExceptID(ctx, req.Name, id)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return errors.New("标签分组名称已存在")
+	}
+
+	group := &model.TagGroup{
+		ID:          id,
+		Name:        req.Name,
+		Description: req.Description,
+		Status:      req.Status,
+	}
+
+	return s.repo.Update(ctx, group)
 }
 
 func (s *tagGroupService) List(ctx context.Context, query dto.TagGroupQuery) ([]dto.TagGroupResponse, int64, error) {
@@ -73,7 +118,6 @@ func (s *tagGroupService) List(ctx context.Context, query dto.TagGroupQuery) ([]
 			ID:          item.ID,
 			Name:        item.Name,
 			Description: item.Description,
-			SortOrder:   item.SortOrder,
 			Status:      item.Status,
 			CreatedAt:   item.CreatedAt,
 			UpdatedAt:   item.UpdatedAt,
@@ -90,9 +134,7 @@ func normalizeTagGroupQuery(query dto.TagGroupQuery) dto.TagGroupQuery {
 	if query.PageSize < 1 || query.PageSize > 100 {
 		query.PageSize = 20
 	}
-	if query.Status == "" {
-		query.Status = "active"
-	}
+	query.Status = normalizeStatusFilter(query.Status)
 
 	return query
 }

@@ -5,7 +5,13 @@ import "time"
 type CreateTagGroupRequest struct {
 	Name        string  `json:"name" binding:"required"`
 	Description *string `json:"description"`
-	SortOrder   int32   `json:"sortOrder"`
+	Status      string  `json:"status"`
+}
+
+type UpdateTagGroupRequest struct {
+	Name        string  `json:"name" binding:"required"`
+	Description *string `json:"description"`
+	Status      string  `json:"status" binding:"required"`
 }
 
 type TagGroupQuery struct {
@@ -19,7 +25,6 @@ type TagGroupResponse struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
 	Description *string   `json:"description"`
-	SortOrder   int32     `json:"sortOrder"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
@@ -29,6 +34,7 @@ type CreateTagRequest struct {
 	GroupID *int64  `json:"groupId"`
 	Name    string  `json:"name" binding:"required"`
 	Color   *string `json:"color"`
+	Status  string  `json:"status"`
 }
 
 type UpdateTagRequest struct {
@@ -54,4 +60,12 @@ type TagResponse struct {
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type TagGroupWithTagsResponse struct {
+	ID          int64         `json:"id"`
+	Name        string        `json:"name"`
+	Description *string       `json:"description"`
+	Status      string        `json:"status"`
+	Tags        []TagResponse `json:"tags"`
 }
