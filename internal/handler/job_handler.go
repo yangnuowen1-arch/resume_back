@@ -36,7 +36,7 @@ func NewJobHandler(service service.JobService) *JobHandler {
 // @Router /jobs [post]
 func (h *JobHandler) Create(c *gin.Context) {
 	var req dto.CreateJobRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindCreateJobRequest(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, 40001, "参数错误", err.Error())
 		return
 	}
@@ -55,9 +55,38 @@ func (h *JobHandler) Create(c *gin.Context) {
 	response.Created(c, gin.H{"id": id})
 }
 
+// Get 查询岗位详情
+// @Summary 查询岗位详情
+// @Description 根据 ID 查询岗位详情，并返回岗位标签和动态字段
+// @Tags 岗位
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "岗位 ID"
+// @Success 200 {object} response.APIResponse
+// @Failure 400 {object} response.APIResponse
+// @Failure 401 {object} response.APIResponse
+// @Failure 500 {object} response.APIResponse
+// @Router /jobs/{id} [get]
+func (h *JobHandler) Get(c *gin.Context) {
+	id, ok := parseInt64Param(c, "id")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "岗位 ID 不合法", nil)
+		return
+	}
+
+	item, err := h.service.Get(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
+		return
+	}
+
+	response.Success(c, item)
+}
+
 // Update 编辑岗位
 // @Summary 编辑岗位
-// @Description 根据 ID 编辑岗位基础信息、要求、状态、优先级、负责人和可选岗位标签；不传 tagIds 时不改标签，传空数组表示清空
+// @Description 根据 ID 编辑岗位基础信息、要求、状态、优先级、负责人、动态字段和可选岗位标签；不传 tagIds 时不改标签，传空数组表示清空
 // @Tags 岗位
 // @Accept json
 // @Produce json
@@ -77,12 +106,45 @@ func (h *JobHandler) Update(c *gin.Context) {
 	}
 
 	var req dto.UpdateJobRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindUpdateJobRequest(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, 40001, "参数错误", err.Error())
 		return
 	}
 
 	if err := h.service.Update(c.Request.Context(), id, req); err != nil {
+		if errors.Is(err, service.ErrUnauthenticated) {
+			response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
+			return
+		}
+
+		response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
+		return
+	}
+
+	response.Success(c, gin.H{"id": id})
+}
+
+// Delete 删除岗位
+// @Summary 删除岗位
+// @Description 根据 ID 删除岗位；岗位下存在投递记录时不允许删除
+// @Tags 岗位
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "岗位 ID"
+// @Success 200 {object} response.APIResponse
+// @Failure 400 {object} response.APIResponse
+// @Failure 401 {object} response.APIResponse
+// @Failure 500 {object} response.APIResponse
+// @Router /jobs/{id} [delete]
+func (h *JobHandler) Delete(c *gin.Context) {
+	id, ok := parseInt64Param(c, "id")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "岗位 ID 不合法", nil)
+		return
+	}
+
+	if err := h.service.Delete(c.Request.Context(), id); err != nil {
 		if errors.Is(err, service.ErrUnauthenticated) {
 			response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
 			return

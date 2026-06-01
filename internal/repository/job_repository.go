@@ -39,6 +39,7 @@ type JobRepository interface {
 	UpdateWithTags(ctx context.Context, job *model.Job, tagIDs []int64, syncTags bool) error
 	FindByID(ctx context.Context, id int64) (*model.Job, error)
 	List(ctx context.Context, keyword string, categoryID *int64, status string, page int, pageSize int) ([]*model.Job, int64, error)
+	Delete(ctx context.Context, id int64) error
 
 	// CategoryExists 判断岗位分类是否存在，用于创建或更新岗位时校验 category_id 是否合法。
 	CategoryExists(ctx context.Context, id int64) (bool, error)
@@ -48,6 +49,9 @@ type JobRepository interface {
 
 	// CountTagsByIDs 统计传入的标签 ID 中真实存在多少个，用于判断是否有无效标签 ID。
 	CountTagsByIDs(ctx context.Context, ids []int64) (int64, error)
+
+	// CountApplicationsByJobID 统计岗位下已有投递数量，删除岗位前用于保护业务数据。
+	CountApplicationsByJobID(ctx context.Context, jobID int64) (int64, error)
 
 	// BindTags 给岗位重新绑定标签，会先清空旧关联，再写入新的岗位-标签关系。
 	BindTags(ctx context.Context, jobID int64, tagIDs []int64) error
@@ -120,6 +124,7 @@ func updateJobFields(db *gorm.DB, job *model.Job) error {
 			"status":           job.Status,
 			"priority":         job.Priority,
 			"owner_user_id":    job.OwnerUserID,
+			"dynamic_fields":   job.DynamicFields,
 		}).Error
 }
 
@@ -175,6 +180,19 @@ func (r *jobRepository) List(
 	return items, total, nil
 }
 
+func (r *jobRepository) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("job_id = ?", id).Delete(&model.JobTag{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("job_id = ?", id).Delete(&model.JobMember{}).Error; err != nil {
+			return err
+		}
+
+		return tx.Where("id = ?", id).Delete(&model.Job{}).Error
+	})
+}
+
 func (r *jobRepository) CategoryExists(ctx context.Context, id int64) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
@@ -206,6 +224,19 @@ func (r *jobRepository) CountTagsByIDs(ctx context.Context, ids []int64) (int64,
 	err := r.db.WithContext(ctx).
 		Model(&model.Tag{}).
 		Where("id IN ?", ids).
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (r *jobRepository) CountApplicationsByJobID(ctx context.Context, jobID int64) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&model.Application{}).
+		Where("job_id = ?", jobID).
 		Count(&count).Error
 	if err != nil {
 		return 0, err

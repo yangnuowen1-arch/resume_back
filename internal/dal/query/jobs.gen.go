@@ -53,6 +53,7 @@ func newJob(db *gorm.DB, opts ...gen.DOOption) job {
 	_job.ClosedAt = field.NewTime(tableName, "closed_at")
 	_job.CreatedAt = field.NewTime(tableName, "created_at")
 	_job.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_job.DynamicFields = field.NewField(tableName, "dynamic_fields")
 
 	_job.fillFieldMap()
 
@@ -89,6 +90,7 @@ type job struct {
 	ClosedAt         field.Time
 	CreatedAt        field.Time
 	UpdatedAt        field.Time
+	DynamicFields    field.Field
 
 	fieldMap map[string]field.Expr
 }
@@ -131,6 +133,7 @@ func (j *job) updateTableName(table string) *job {
 	j.ClosedAt = field.NewTime(table, "closed_at")
 	j.CreatedAt = field.NewTime(table, "created_at")
 	j.UpdatedAt = field.NewTime(table, "updated_at")
+	j.DynamicFields = field.NewField(table, "dynamic_fields")
 
 	j.fillFieldMap()
 
@@ -155,7 +158,7 @@ func (j *job) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (j *job) fillFieldMap() {
-	j.fieldMap = make(map[string]field.Expr, 26)
+	j.fieldMap = make(map[string]field.Expr, 27)
 	j.fieldMap["id"] = j.ID
 	j.fieldMap["category_id"] = j.CategoryID
 	j.fieldMap["title"] = j.Title
@@ -182,6 +185,7 @@ func (j *job) fillFieldMap() {
 	j.fieldMap["closed_at"] = j.ClosedAt
 	j.fieldMap["created_at"] = j.CreatedAt
 	j.fieldMap["updated_at"] = j.UpdatedAt
+	j.fieldMap["dynamic_fields"] = j.DynamicFields
 }
 
 func (j job) clone(db *gorm.DB) job {

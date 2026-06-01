@@ -278,6 +278,40 @@ const docTemplate = `{
                 }
             }
         },
+        "/candidate-statuses": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回候选人/简历状态枚举，前端写死枚举时也应与这里保持一致",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "候选人"
+                ],
+                "summary": "查询候选人状态枚举",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/candidates": {
             "get": {
                 "security": [
@@ -285,7 +319,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "分页查询候选人，可按姓名、邮箱、手机号关键词和来源筛选",
+                "description": "分页查询候选人，可按姓名、邮箱、手机号关键词、来源和状态筛选，并返回 positionCategoryId/positionCategoryName/currentJobId；source 只接受 boss/email",
                 "consumes": [
                     "application/json"
                 ],
@@ -319,8 +353,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "候选人来源",
+                        "description": "候选人来源 boss/email",
                         "name": "source",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "候选人状态",
+                        "name": "status",
                         "in": "query"
                     }
                 ],
@@ -357,9 +397,10 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建候选人基础档案",
+                "description": "创建候选人基础档案；支持 positionCategoryId/currentJobId 关联岗位分类和岗位；gender 只接受 男/女，source 只接受 boss/email，highestEducation 只接受 专科/本科/硕士/博士；推荐使用 multipart/form-data 同时上传 file 简历文件，兼容旧 JSON 创建",
                 "consumes": [
-                    "application/json"
+                    "application/json",
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -377,11 +418,74 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/dto.CreateCandidateRequest"
                         }
+                    },
+                    {
+                        "type": "file",
+                        "description": "简历文件，multipart 创建时必传",
+                        "name": "file",
+                        "in": "formData"
                     }
                 ],
                 "responses": {
                     "201": {
                         "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/candidates/batch-analyze": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按候选人 ID 批量创建分析任务；不传 jobId 时使用候选人最新简历已有投递岗位，传 jobId 时会为最新简历创建/复用投递记录",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "候选人"
+                ],
+                "summary": "批量分析候选人简历",
+                "parameters": [
+                    {
+                        "description": "批量分析请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.BatchAnalyzeCandidatesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.APIResponse"
                         }
@@ -414,7 +518,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "根据 ID 编辑候选人基础档案",
+                "description": "根据 ID 编辑候选人基础档案；支持 positionCategoryId/currentJobId 关联岗位分类和岗位；gender 只接受 男/女，source 只接受 boss/email，highestEducation 只接受 专科/本科/硕士/博士",
                 "consumes": [
                     "application/json"
                 ],
@@ -446,6 +550,80 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/candidates/{id}/resume": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "给已有候选人上传一份新的简历；列表会以最新简历作为展示和分析对象",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "候选人"
+                ],
+                "summary": "给候选人上传/替换简历",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "候选人 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "简历文件",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "简历原始文本",
+                        "name": "rawText",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "简历语言",
+                        "name": "language",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/response.APIResponse"
                         }
@@ -794,13 +972,66 @@ const docTemplate = `{
             }
         },
         "/jobs/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 查询岗位详情，并返回岗位标签和动态字段",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "岗位"
+                ],
+                "summary": "查询岗位详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "岗位 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "根据 ID 编辑岗位基础信息、要求、状态、优先级、负责人和可选岗位标签；不传 tagIds 时不改标签，传空数组表示清空",
+                "description": "根据 ID 编辑岗位基础信息、要求、状态、优先级、负责人、动态字段和可选岗位标签；不传 tagIds 时不改标签，传空数组表示清空",
                 "consumes": [
                     "application/json"
                 ],
@@ -827,6 +1058,59 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/dto.UpdateJobRequest"
                         }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 删除岗位；岗位下存在投递记录时不允许删除",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "岗位"
+                ],
+                "summary": "删除岗位",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "岗位 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -2149,6 +2433,23 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.BatchAnalyzeCandidatesRequest": {
+            "type": "object",
+            "required": [
+                "candidateIds"
+            ],
+            "properties": {
+                "candidateIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "jobId": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.BindJobTagsRequest": {
             "type": "object",
             "required": [
@@ -2199,16 +2500,32 @@ const docTemplate = `{
                 "currentCompany": {
                     "type": "string"
                 },
+                "currentJobId": {
+                    "type": "integer"
+                },
                 "currentPosition": {
+                    "type": "string"
+                },
+                "currentPositionCategory": {
                     "type": "string"
                 },
                 "email": {
                     "type": "string"
                 },
                 "gender": {
+                    "enum": [
+                        "男",
+                        "女"
+                    ],
                     "type": "string"
                 },
                 "highestEducation": {
+                    "enum": [
+                        "专科",
+                        "本科",
+                        "硕士",
+                        "博士"
+                    ],
                     "type": "string"
                 },
                 "location": {
@@ -2223,10 +2540,20 @@ const docTemplate = `{
                 "phone": {
                     "type": "string"
                 },
+                "positionCategoryId": {
+                    "type": "integer"
+                },
                 "school": {
                     "type": "string"
                 },
                 "source": {
+                    "enum": [
+                        "boss",
+                        "email"
+                    ],
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 },
                 "yearsOfExperience": {
@@ -2262,6 +2589,9 @@ const docTemplate = `{
                 },
                 "categoryId": {
                     "type": "integer"
+                },
+                "dynamicFields": {
+                    "type": "object"
                 },
                 "description": {
                     "type": "string"
@@ -2480,22 +2810,39 @@ const docTemplate = `{
         "dto.UpdateCandidateRequest": {
             "type": "object",
             "required": [
-                "name"
+                "name",
+                "status"
             ],
             "properties": {
                 "currentCompany": {
                     "type": "string"
                 },
+                "currentJobId": {
+                    "type": "integer"
+                },
                 "currentPosition": {
+                    "type": "string"
+                },
+                "currentPositionCategory": {
                     "type": "string"
                 },
                 "email": {
                     "type": "string"
                 },
                 "gender": {
+                    "enum": [
+                        "男",
+                        "女"
+                    ],
                     "type": "string"
                 },
                 "highestEducation": {
+                    "enum": [
+                        "专科",
+                        "本科",
+                        "硕士",
+                        "博士"
+                    ],
                     "type": "string"
                 },
                 "location": {
@@ -2510,10 +2857,20 @@ const docTemplate = `{
                 "phone": {
                     "type": "string"
                 },
+                "positionCategoryId": {
+                    "type": "integer"
+                },
                 "school": {
                     "type": "string"
                 },
                 "source": {
+                    "enum": [
+                        "boss",
+                        "email"
+                    ],
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 },
                 "yearsOfExperience": {
@@ -2552,6 +2909,9 @@ const docTemplate = `{
                 },
                 "categoryId": {
                     "type": "integer"
+                },
+                "dynamicFields": {
+                    "type": "object"
                 },
                 "description": {
                     "type": "string"

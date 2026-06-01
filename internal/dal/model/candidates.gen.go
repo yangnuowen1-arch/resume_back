@@ -12,21 +12,25 @@ const TableNameCandidate = "candidates"
 
 // Candidate mapped from table <candidates>
 type Candidate struct {
-	ID                int64     `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true" json:"id"`
-	Name              *string   `gorm:"column:name;type:character varying(100)" json:"name"`
-	Email             *string   `gorm:"column:email;type:character varying(100)" json:"email"`
-	Phone             *string   `gorm:"column:phone;type:character varying(50)" json:"phone"`
-	Gender            *string   `gorm:"column:gender;type:character varying(20)" json:"gender"`
-	CurrentCompany    *string   `gorm:"column:current_company;type:character varying(100)" json:"current_company"`
-	CurrentPosition   *string   `gorm:"column:current_position;type:character varying(100)" json:"current_position"`
-	YearsOfExperience *float64  `gorm:"column:years_of_experience;type:numeric(4,1)" json:"years_of_experience"`
-	HighestEducation  *string   `gorm:"column:highest_education;type:character varying(100)" json:"highest_education"`
-	School            *string   `gorm:"column:school;type:character varying(100)" json:"school"`
-	Major             *string   `gorm:"column:major;type:character varying(100)" json:"major"`
-	Location          *string   `gorm:"column:location;type:character varying(100)" json:"location"`
-	Source            *string   `gorm:"column:source;type:character varying(100)" json:"source"`
-	CreatedAt         time.Time `gorm:"column:created_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
-	UpdatedAt         time.Time `gorm:"column:updated_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
+	ID                      int64     `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true" json:"id"`
+	Name                    *string   `gorm:"column:name;type:character varying(100)" json:"name"`
+	Email                   *string   `gorm:"column:email;type:character varying(100)" json:"email"`
+	Phone                   *string   `gorm:"column:phone;type:character varying(50)" json:"phone"`
+	Gender                  *string   `gorm:"column:gender;type:character varying(20)" json:"gender"`
+	CurrentCompany          *string   `gorm:"column:current_company;type:character varying(100)" json:"current_company"`
+	PositionCategoryID      *int64    `gorm:"column:position_category_id;type:bigint" json:"position_category_id"`
+	CurrentJobID            *int64    `gorm:"column:current_job_id;type:bigint" json:"current_job_id"`
+	CurrentPosition         *string   `gorm:"column:current_position;type:character varying(100)" json:"current_position"`
+	CurrentPositionCategory *string   `gorm:"column:current_position_category;type:character varying(100)" json:"current_position_category"`
+	YearsOfExperience       *float64  `gorm:"column:years_of_experience;type:numeric(4,1)" json:"years_of_experience"`
+	HighestEducation        *string   `gorm:"column:highest_education;type:character varying(100)" json:"highest_education"`
+	School                  *string   `gorm:"column:school;type:character varying(100)" json:"school"`
+	Major                   *string   `gorm:"column:major;type:character varying(100)" json:"major"`
+	Location                *string   `gorm:"column:location;type:character varying(100)" json:"location"`
+	Source                  *string   `gorm:"column:source;type:character varying(100)" json:"source"`
+	Status                  string    `gorm:"column:status;type:character varying(50);not null;default:new" json:"status"`
+	CreatedAt               time.Time `gorm:"column:created_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+	UpdatedAt               time.Time `gorm:"column:updated_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
 }
 
 // TableName Candidate's table name

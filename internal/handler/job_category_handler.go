@@ -131,7 +131,7 @@ func (h *JobCategoryHandler) List(c *gin.Context) {
 		page = 1
 	}
 
-	if pageSize < 1 || pageSize > 100 {
+	if pageSize < 1 || pageSize > 200 {
 		pageSize = 20
 	}
 

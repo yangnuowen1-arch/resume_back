@@ -51,7 +51,6 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	candidateRepo := repository.NewCandidateRepository(db)
 	candidateService := service.NewCandidateService(candidateRepo)
-	candidateHandler := handler.NewCandidateHandler(candidateService)
 
 	resumeRepo := repository.NewResumeRepository(db)
 	resumeService := service.NewResumeService(resumeRepo, candidateRepo)
@@ -69,6 +68,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		}
 		resumeUploader = r2Uploader
 	}
+	candidateHandler := handler.NewCandidateHandler(candidateService, resumeUploader)
 	resumeHandler := handler.NewResumeHandler(resumeService, resumeUploader)
 
 	applicationRepo := repository.NewApplicationRepository(db)
@@ -109,7 +109,9 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 		private.GET("/jobs", jobHandler.List)
 		private.POST("/jobs", jobHandler.Create)
+		private.GET("/jobs/:id", jobHandler.Get)
 		private.PUT("/jobs/:id", jobHandler.Update)
+		private.DELETE("/jobs/:id", jobHandler.Delete)
 		private.GET("/jobs/:id/tags", jobHandler.ListTags)
 		private.PUT("/jobs/:id/tags", jobHandler.BindTags)
 		private.GET("/jobs/:id/members", jobHandler.ListMembers)
@@ -117,7 +119,10 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 		private.GET("/candidates", candidateHandler.List)
 		private.POST("/candidates", candidateHandler.Create)
+		private.POST("/candidates/batch-analyze", candidateHandler.BatchAnalyze)
+		private.POST("/candidates/:id/resume", candidateHandler.UploadResume)
 		private.PUT("/candidates/:id", candidateHandler.Update)
+		private.GET("/candidate-statuses", candidateHandler.ListStatuses)
 
 		private.GET("/resumes", resumeHandler.List)
 		private.POST("/resumes/upload", resumeHandler.Upload)

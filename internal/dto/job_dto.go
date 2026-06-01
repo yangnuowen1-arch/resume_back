@@ -3,41 +3,43 @@ package dto
 import "time"
 
 type CreateJobRequest struct {
-	CategoryID       *int64  `json:"categoryId"`
-	Title            string  `json:"title" binding:"required"`
-	Headcount        int32   `json:"headcount"`
-	SalaryMin        *int32  `json:"salaryMin"`
-	SalaryMax        *int32  `json:"salaryMax"`
-	SalaryMonths     *int32  `json:"salaryMonths"`
-	ExperienceMin    *int32  `json:"experienceMin"`
-	ExperienceMax    *int32  `json:"experienceMax"`
-	Description      *string `json:"description"`
-	Responsibilities *string `json:"responsibilities"`
-	Requirements     *string `json:"requirements"`
-	BonusPoints      *string `json:"bonusPoints"`
-	Status           string  `json:"status"`
-	Priority         string  `json:"priority"`
-	OwnerUserID      *int64  `json:"ownerUserId"`
-	TagIDs           []int64 `json:"tagIds"`
+	CategoryID       *int64                 `json:"categoryId"`
+	Title            string                 `json:"title" binding:"required"`
+	Headcount        int32                  `json:"headcount"`
+	SalaryMin        *int32                 `json:"salaryMin"`
+	SalaryMax        *int32                 `json:"salaryMax"`
+	SalaryMonths     *int32                 `json:"salaryMonths"`
+	ExperienceMin    *int32                 `json:"experienceMin"`
+	ExperienceMax    *int32                 `json:"experienceMax"`
+	Description      *string                `json:"description"`
+	Responsibilities *string                `json:"responsibilities"`
+	Requirements     *string                `json:"requirements"`
+	BonusPoints      *string                `json:"bonusPoints"`
+	Status           string                 `json:"status"`
+	Priority         string                 `json:"priority"`
+	OwnerUserID      *int64                 `json:"ownerUserId"`
+	TagIDs           []int64                `json:"tagIds"`
+	DynamicFields    map[string]interface{} `json:"dynamicFields" swaggertype:"object"`
 }
 
 type UpdateJobRequest struct {
-	CategoryID       *int64  `json:"categoryId"`
-	Title            string  `json:"title" binding:"required"`
-	Headcount        int32   `json:"headcount"`
-	SalaryMin        *int32  `json:"salaryMin"`
-	SalaryMax        *int32  `json:"salaryMax"`
-	SalaryMonths     *int32  `json:"salaryMonths"`
-	ExperienceMin    *int32  `json:"experienceMin"`
-	ExperienceMax    *int32  `json:"experienceMax"`
-	Description      *string `json:"description"`
-	Responsibilities *string `json:"responsibilities"`
-	Requirements     *string `json:"requirements"`
-	BonusPoints      *string `json:"bonusPoints"`
-	Status           string  `json:"status" binding:"required"`
-	Priority         string  `json:"priority" binding:"required"`
-	OwnerUserID      *int64  `json:"ownerUserId"`
-	TagIDs           []int64 `json:"tagIds"`
+	CategoryID       *int64                 `json:"categoryId"`
+	Title            string                 `json:"title" binding:"required"`
+	Headcount        int32                  `json:"headcount"`
+	SalaryMin        *int32                 `json:"salaryMin"`
+	SalaryMax        *int32                 `json:"salaryMax"`
+	SalaryMonths     *int32                 `json:"salaryMonths"`
+	ExperienceMin    *int32                 `json:"experienceMin"`
+	ExperienceMax    *int32                 `json:"experienceMax"`
+	Description      *string                `json:"description"`
+	Responsibilities *string                `json:"responsibilities"`
+	Requirements     *string                `json:"requirements"`
+	BonusPoints      *string                `json:"bonusPoints"`
+	Status           string                 `json:"status" binding:"required"`
+	Priority         string                 `json:"priority" binding:"required"`
+	OwnerUserID      *int64                 `json:"ownerUserId"`
+	TagIDs           []int64                `json:"tagIds"`
+	DynamicFields    map[string]interface{} `json:"dynamicFields" swaggertype:"object"`
 }
 
 type JobQuery struct {
@@ -49,28 +51,29 @@ type JobQuery struct {
 }
 
 type JobResponse struct {
-	ID               int64            `json:"id"`
-	CategoryID       *int64           `json:"categoryId"`
-	Title            string           `json:"title"`
-	Headcount        int32            `json:"headcount"`
-	SalaryMin        *int32           `json:"salaryMin"`
-	SalaryMax        *int32           `json:"salaryMax"`
-	SalaryMonths     *int32           `json:"salaryMonths"`
-	ExperienceMin    *int32           `json:"experienceMin"`
-	ExperienceMax    *int32           `json:"experienceMax"`
-	Description      *string          `json:"description"`
-	Responsibilities *string          `json:"responsibilities"`
-	Requirements     *string          `json:"requirements"`
-	BonusPoints      *string          `json:"bonusPoints"`
-	Status           string           `json:"status"`
-	Priority         string           `json:"priority"`
-	OwnerUserID      *int64           `json:"ownerUserId"`
-	CreatedBy        *int64           `json:"createdBy"`
-	PublishedAt      *time.Time       `json:"publishedAt"`
-	ClosedAt         *time.Time       `json:"closedAt"`
-	CreatedAt        time.Time        `json:"createdAt"`
-	UpdatedAt        time.Time        `json:"updatedAt"`
-	Tags             []JobTagResponse `json:"tags"`
+	ID               int64                  `json:"id"`
+	CategoryID       *int64                 `json:"categoryId"`
+	Title            string                 `json:"title"`
+	Headcount        int32                  `json:"headcount"`
+	SalaryMin        *int32                 `json:"salaryMin"`
+	SalaryMax        *int32                 `json:"salaryMax"`
+	SalaryMonths     *int32                 `json:"salaryMonths"`
+	ExperienceMin    *int32                 `json:"experienceMin"`
+	ExperienceMax    *int32                 `json:"experienceMax"`
+	Description      *string                `json:"description"`
+	Responsibilities *string                `json:"responsibilities"`
+	Requirements     *string                `json:"requirements"`
+	BonusPoints      *string                `json:"bonusPoints"`
+	Status           string                 `json:"status"`
+	Priority         string                 `json:"priority"`
+	OwnerUserID      *int64                 `json:"ownerUserId"`
+	CreatedBy        *int64                 `json:"createdBy"`
+	PublishedAt      *time.Time             `json:"publishedAt"`
+	ClosedAt         *time.Time             `json:"closedAt"`
+	CreatedAt        time.Time              `json:"createdAt"`
+	UpdatedAt        time.Time              `json:"updatedAt"`
+	Tags             []JobTagResponse       `json:"tags"`
+	DynamicFields    map[string]interface{} `json:"dynamicFields"`
 }
 
 type BindJobTagsRequest struct {

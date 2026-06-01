@@ -121,7 +121,7 @@ func (s *jobCategoryService) List(
 		query.Page = 1
 	}
 
-	if query.PageSize < 1 || query.PageSize > 100 {
+	if query.PageSize < 1 || query.PageSize > 200 {
 		query.PageSize = 20
 	}
 	query.Status = normalizeStatusFilter(query.Status)

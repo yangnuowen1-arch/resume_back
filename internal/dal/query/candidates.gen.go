@@ -33,7 +33,10 @@ func newCandidate(db *gorm.DB, opts ...gen.DOOption) candidate {
 	_candidate.Phone = field.NewString(tableName, "phone")
 	_candidate.Gender = field.NewString(tableName, "gender")
 	_candidate.CurrentCompany = field.NewString(tableName, "current_company")
+	_candidate.PositionCategoryID = field.NewInt64(tableName, "position_category_id")
+	_candidate.CurrentJobID = field.NewInt64(tableName, "current_job_id")
 	_candidate.CurrentPosition = field.NewString(tableName, "current_position")
+	_candidate.CurrentPositionCategory = field.NewString(tableName, "current_position_category")
 	_candidate.YearsOfExperience = field.NewFloat64(tableName, "years_of_experience")
 	_candidate.HighestEducation = field.NewString(tableName, "highest_education")
 	_candidate.School = field.NewString(tableName, "school")
@@ -51,22 +54,25 @@ func newCandidate(db *gorm.DB, opts ...gen.DOOption) candidate {
 type candidate struct {
 	candidateDo candidateDo
 
-	ALL               field.Asterisk
-	ID                field.Int64
-	Name              field.String
-	Email             field.String
-	Phone             field.String
-	Gender            field.String
-	CurrentCompany    field.String
-	CurrentPosition   field.String
-	YearsOfExperience field.Float64
-	HighestEducation  field.String
-	School            field.String
-	Major             field.String
-	Location          field.String
-	Source            field.String
-	CreatedAt         field.Time
-	UpdatedAt         field.Time
+	ALL                     field.Asterisk
+	ID                      field.Int64
+	Name                    field.String
+	Email                   field.String
+	Phone                   field.String
+	Gender                  field.String
+	CurrentCompany          field.String
+	PositionCategoryID      field.Int64
+	CurrentJobID            field.Int64
+	CurrentPosition         field.String
+	CurrentPositionCategory field.String
+	YearsOfExperience       field.Float64
+	HighestEducation        field.String
+	School                  field.String
+	Major                   field.String
+	Location                field.String
+	Source                  field.String
+	CreatedAt               field.Time
+	UpdatedAt               field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -89,7 +95,10 @@ func (c *candidate) updateTableName(table string) *candidate {
 	c.Phone = field.NewString(table, "phone")
 	c.Gender = field.NewString(table, "gender")
 	c.CurrentCompany = field.NewString(table, "current_company")
+	c.PositionCategoryID = field.NewInt64(table, "position_category_id")
+	c.CurrentJobID = field.NewInt64(table, "current_job_id")
 	c.CurrentPosition = field.NewString(table, "current_position")
+	c.CurrentPositionCategory = field.NewString(table, "current_position_category")
 	c.YearsOfExperience = field.NewFloat64(table, "years_of_experience")
 	c.HighestEducation = field.NewString(table, "highest_education")
 	c.School = field.NewString(table, "school")
@@ -124,14 +133,17 @@ func (c *candidate) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (c *candidate) fillFieldMap() {
-	c.fieldMap = make(map[string]field.Expr, 15)
+	c.fieldMap = make(map[string]field.Expr, 18)
 	c.fieldMap["id"] = c.ID
 	c.fieldMap["name"] = c.Name
 	c.fieldMap["email"] = c.Email
 	c.fieldMap["phone"] = c.Phone
 	c.fieldMap["gender"] = c.Gender
 	c.fieldMap["current_company"] = c.CurrentCompany
+	c.fieldMap["position_category_id"] = c.PositionCategoryID
+	c.fieldMap["current_job_id"] = c.CurrentJobID
 	c.fieldMap["current_position"] = c.CurrentPosition
+	c.fieldMap["current_position_category"] = c.CurrentPositionCategory
 	c.fieldMap["years_of_experience"] = c.YearsOfExperience
 	c.fieldMap["highest_education"] = c.HighestEducation
 	c.fieldMap["school"] = c.School

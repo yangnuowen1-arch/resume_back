@@ -2,18 +2,22 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
+	"gorm.io/datatypes"
 )
 
 type JobService interface {
 	Create(ctx context.Context, req dto.CreateJobRequest) (int64, error)
 	Update(ctx context.Context, id int64, req dto.UpdateJobRequest) error
+	Get(ctx context.Context, id int64) (dto.JobResponse, error)
 	List(ctx context.Context, query dto.JobQuery) ([]dto.JobResponse, int64, error)
+	Delete(ctx context.Context, id int64) error
 	BindTags(ctx context.Context, jobID int64, req dto.BindJobTagsRequest) error
 	ListTags(ctx context.Context, jobID int64) ([]dto.JobTagResponse, error)
 	AssignMember(ctx context.Context, jobID int64, req dto.AssignJobMemberRequest) (int64, error)
@@ -76,6 +80,10 @@ func (s *jobService) Create(ctx context.Context, req dto.CreateJobRequest) (int6
 	if err != nil {
 		return 0, err
 	}
+	dynamicFields, err := normalizeJobDynamicFields(req.DynamicFields)
+	if err != nil {
+		return 0, err
+	}
 
 	job := &model.Job{
 		CategoryID:       req.CategoryID,
@@ -94,6 +102,7 @@ func (s *jobService) Create(ctx context.Context, req dto.CreateJobRequest) (int6
 		Priority:         req.Priority,
 		OwnerUserID:      req.OwnerUserID,
 		CreatedBy:        &userID,
+		DynamicFields:    dynamicFields,
 	}
 	if err := s.repo.CreateWithTags(ctx, job, tagIDs); err != nil {
 		return 0, err
@@ -134,6 +143,7 @@ func (s *jobService) Update(ctx context.Context, id int64, req dto.UpdateJobRequ
 		Priority:         req.Priority,
 		OwnerUserID:      req.OwnerUserID,
 		TagIDs:           req.TagIDs,
+		DynamicFields:    req.DynamicFields,
 	}
 	normalizeCreateJobRequest(&createReq)
 	if createReq.Title == "" {
@@ -186,6 +196,14 @@ func (s *jobService) Update(ctx context.Context, id int64, req dto.UpdateJobRequ
 		}
 	}
 
+	dynamicFields := existing.DynamicFields
+	if req.DynamicFields != nil {
+		dynamicFields, err = normalizeJobDynamicFields(req.DynamicFields)
+		if err != nil {
+			return err
+		}
+	}
+
 	job := &model.Job{
 		ID:               id,
 		CategoryID:       createReq.CategoryID,
@@ -203,9 +221,33 @@ func (s *jobService) Update(ctx context.Context, id int64, req dto.UpdateJobRequ
 		Status:           createReq.Status,
 		Priority:         createReq.Priority,
 		OwnerUserID:      createReq.OwnerUserID,
+		DynamicFields:    dynamicFields,
 	}
 
 	return s.repo.UpdateWithTags(ctx, job, tagIDs, syncTags)
+}
+
+func (s *jobService) Get(ctx context.Context, id int64) (dto.JobResponse, error) {
+	if id <= 0 {
+		return dto.JobResponse{}, errors.New("岗位 ID 不合法")
+	}
+
+	job, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return dto.JobResponse{}, errors.New("岗位不存在")
+	}
+
+	tags, err := s.repo.ListTags(ctx, id)
+	if err != nil {
+		return dto.JobResponse{}, err
+	}
+
+	tagResponses := make([]dto.JobTagResponse, 0, len(tags))
+	for _, item := range tags {
+		tagResponses = append(tagResponses, toJobTagResponse(item))
+	}
+
+	return toJobResponse(job, tagResponses), nil
 }
 
 func (s *jobService) List(ctx context.Context, query dto.JobQuery) ([]dto.JobResponse, int64, error) {
@@ -237,6 +279,29 @@ func (s *jobService) List(ctx context.Context, query dto.JobQuery) ([]dto.JobRes
 	}
 
 	return result, total, nil
+}
+
+func (s *jobService) Delete(ctx context.Context, id int64) error {
+	if _, err := currentUserID(ctx); err != nil {
+		return err
+	}
+
+	if id <= 0 {
+		return errors.New("岗位 ID 不合法")
+	}
+	if _, err := s.repo.FindByID(ctx, id); err != nil {
+		return errors.New("岗位不存在")
+	}
+
+	count, err := s.repo.CountApplicationsByJobID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("岗位下存在投递记录，不能删除")
+	}
+
+	return s.repo.Delete(ctx, id)
 }
 
 func (s *jobService) BindTags(ctx context.Context, jobID int64, req dto.BindJobTagsRequest) error {
@@ -416,7 +481,7 @@ func normalizeJobQuery(query dto.JobQuery) dto.JobQuery {
 	if query.Page < 1 {
 		query.Page = 1
 	}
-	if query.PageSize < 1 || query.PageSize > 100 {
+	if query.PageSize < 1 || query.PageSize > 200 {
 		query.PageSize = 20
 	}
 	if query.Status == "" {
@@ -424,6 +489,27 @@ func normalizeJobQuery(query dto.JobQuery) dto.JobQuery {
 	}
 
 	return query
+}
+
+func normalizeJobDynamicFields(fields map[string]interface{}) (datatypes.JSONMap, error) {
+	if fields == nil {
+		return datatypes.JSONMap{}, nil
+	}
+
+	normalized := make(datatypes.JSONMap, len(fields))
+	for key, value := range fields {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return nil, errors.New("动态字段名称不能为空")
+		}
+		normalized[key] = value
+	}
+
+	if _, err := json.Marshal(normalized); err != nil {
+		return nil, errors.New("动态字段必须是合法 JSON")
+	}
+
+	return normalized, nil
 }
 
 // uniquePositiveIDs 过滤掉非法 ID，并去掉重复 ID。
@@ -476,7 +562,16 @@ func toJobResponse(job *model.Job, tags []dto.JobTagResponse) dto.JobResponse {
 		CreatedAt:        job.CreatedAt,
 		UpdatedAt:        job.UpdatedAt,
 		Tags:             tags,
+		DynamicFields:    toJobDynamicFields(job.DynamicFields),
 	}
+}
+
+func toJobDynamicFields(fields datatypes.JSONMap) map[string]interface{} {
+	if fields == nil {
+		return map[string]interface{}{}
+	}
+
+	return map[string]interface{}(fields)
 }
 
 func toJobTagResponse(item repository.JobTagWithTag) dto.JobTagResponse {
