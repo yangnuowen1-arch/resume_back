@@ -168,7 +168,7 @@ func (h *JobHandler) Delete(c *gin.Context) {
 // @Param pageSize query int false "每页数量" default(20)
 // @Param keyword query string false "岗位名称关键词"
 // @Param categoryId query int false "岗位分类 ID"
-// @Param status query string false "状态 draft/published/closed"
+// @Param status query string false "状态 all/draft/published/closed，不传或传 all 表示全部"
 // @Success 200 {object} response.APIResponse
 // @Failure 400 {object} response.APIResponse
 // @Failure 401 {object} response.APIResponse

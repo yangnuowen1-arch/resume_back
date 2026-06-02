@@ -16,6 +16,7 @@ type CandidateService interface {
 	UploadResume(ctx context.Context, id int64, resumeReq dto.UploadResumeRequest) (int64, error)
 	BatchAnalyze(ctx context.Context, req dto.BatchAnalyzeCandidatesRequest) (dto.BatchAnalyzeCandidatesResponse, error)
 	Update(ctx context.Context, id int64, req dto.UpdateCandidateRequest) error
+	UpdateWithResume(ctx context.Context, id int64, req dto.UpdateCandidateRequest, resumeReq dto.UploadResumeRequest) (int64, error)
 	List(ctx context.Context, query dto.CandidateQuery) ([]dto.CandidateResponse, int64, error)
 	StatusOptions() []dto.CandidateStatusOption
 }
@@ -128,19 +129,8 @@ func (s *candidateService) CreateWithResume(ctx context.Context, req dto.CreateC
 		return 0, 0, err
 	}
 
-	resumeReq.OriginalFilename = strings.TrimSpace(resumeReq.OriginalFilename)
-	resumeReq.FileURL = strings.TrimSpace(resumeReq.FileURL)
-	resumeReq.FileType = strings.TrimSpace(resumeReq.FileType)
-	resumeReq.RawText = trimOptionalString(resumeReq.RawText)
-	resumeReq.Language = trimOptionalString(resumeReq.Language)
-	if resumeReq.OriginalFilename == "" {
-		return 0, 0, errors.New("原始文件名不能为空")
-	}
-	if resumeReq.FileURL == "" {
-		return 0, 0, errors.New("简历文件地址不能为空")
-	}
-	if resumeReq.FileSize <= 0 {
-		return 0, 0, errors.New("简历文件大小不合法")
+	if err := normalizeAndValidateUploadResumeRequest(&resumeReq); err != nil {
+		return 0, 0, err
 	}
 
 	name := req.Name
@@ -188,19 +178,8 @@ func (s *candidateService) UploadResume(ctx context.Context, id int64, resumeReq
 		return 0, errors.New("候选人 ID 不合法")
 	}
 
-	resumeReq.OriginalFilename = strings.TrimSpace(resumeReq.OriginalFilename)
-	resumeReq.FileURL = strings.TrimSpace(resumeReq.FileURL)
-	resumeReq.FileType = strings.TrimSpace(resumeReq.FileType)
-	resumeReq.RawText = trimOptionalString(resumeReq.RawText)
-	resumeReq.Language = trimOptionalString(resumeReq.Language)
-	if resumeReq.OriginalFilename == "" {
-		return 0, errors.New("原始文件名不能为空")
-	}
-	if resumeReq.FileURL == "" {
-		return 0, errors.New("简历文件地址不能为空")
-	}
-	if resumeReq.FileSize <= 0 {
-		return 0, errors.New("简历文件大小不合法")
+	if err := normalizeAndValidateUploadResumeRequest(&resumeReq); err != nil {
+		return 0, err
 	}
 
 	resume := &model.Resume{
@@ -311,6 +290,73 @@ func (s *candidateService) Update(ctx context.Context, id int64, req dto.UpdateC
 	return s.repo.Update(ctx, candidate)
 }
 
+func (s *candidateService) UpdateWithResume(ctx context.Context, id int64, req dto.UpdateCandidateRequest, resumeReq dto.UploadResumeRequest) (int64, error) {
+	userID, err := currentUserID(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	if id <= 0 {
+		return 0, errors.New("候选人 ID 不合法")
+	}
+	if _, err := s.repo.FindByID(ctx, id); err != nil {
+		return 0, errors.New("候选人不存在")
+	}
+
+	createReq := dto.CreateCandidateRequest(req)
+	normalizeCreateCandidateRequest(&createReq)
+	if err := validateCandidate(createReq.Name, createReq.YearsOfExperience); err != nil {
+		return 0, err
+	}
+	if err := validateCandidateStatus(createReq.Status); err != nil {
+		return 0, err
+	}
+	if err := validateCandidateEnums(createReq); err != nil {
+		return 0, err
+	}
+	if err := s.normalizeAndValidateCandidatePosition(ctx, &createReq); err != nil {
+		return 0, err
+	}
+	if err := normalizeAndValidateUploadResumeRequest(&resumeReq); err != nil {
+		return 0, err
+	}
+
+	name := createReq.Name
+	candidate := &model.Candidate{
+		ID:                      id,
+		Name:                    &name,
+		Email:                   createReq.Email,
+		Phone:                   createReq.Phone,
+		Gender:                  createReq.Gender,
+		CurrentCompany:          createReq.CurrentCompany,
+		PositionCategoryID:      createReq.PositionCategoryID,
+		CurrentJobID:            createReq.CurrentJobID,
+		CurrentPosition:         createReq.CurrentPosition,
+		CurrentPositionCategory: createReq.CurrentPositionCategory,
+		YearsOfExperience:       createReq.YearsOfExperience,
+		HighestEducation:        createReq.HighestEducation,
+		School:                  createReq.School,
+		Major:                   createReq.Major,
+		Location:                createReq.Location,
+		Source:                  createReq.Source,
+		Status:                  CandidateStatusPendingReview,
+	}
+	resume := &model.Resume{
+		OriginalFilename: &resumeReq.OriginalFilename,
+		FileURL:          &resumeReq.FileURL,
+		FileType:         &resumeReq.FileType,
+		FileSize:         &resumeReq.FileSize,
+		RawText:          resumeReq.RawText,
+		Language:         resumeReq.Language,
+		UploadBy:         &userID,
+	}
+	if err := s.repo.UpdateWithResume(ctx, candidate, resume); err != nil {
+		return 0, err
+	}
+
+	return resume.ID, nil
+}
+
 func (s *candidateService) List(ctx context.Context, query dto.CandidateQuery) ([]dto.CandidateResponse, int64, error) {
 	query = normalizeCandidateQuery(query)
 
@@ -374,6 +420,25 @@ func normalizeCreateCandidateRequest(req *dto.CreateCandidateRequest) {
 	req.Location = trimOptionalString(req.Location)
 	req.Source = normalizeOptionalCandidateSource(req.Source)
 	req.Status = normalizeCandidateStatus(req.Status, CandidateStatusNew)
+}
+
+func normalizeAndValidateUploadResumeRequest(req *dto.UploadResumeRequest) error {
+	req.OriginalFilename = strings.TrimSpace(req.OriginalFilename)
+	req.FileURL = strings.TrimSpace(req.FileURL)
+	req.FileType = strings.TrimSpace(req.FileType)
+	req.RawText = trimOptionalString(req.RawText)
+	req.Language = trimOptionalString(req.Language)
+	if req.OriginalFilename == "" {
+		return errors.New("原始文件名不能为空")
+	}
+	if req.FileURL == "" {
+		return errors.New("简历文件地址不能为空")
+	}
+	if req.FileSize <= 0 {
+		return errors.New("简历文件大小不合法")
+	}
+
+	return nil
 }
 
 func validateCandidate(name string, yearsOfExperience *float64) error {
@@ -601,6 +666,8 @@ func toCandidateListResponse(candidate repository.CandidateListItem) dto.Candida
 		ResumeID:                candidate.ResumeID,
 		ResumeFilename:          candidate.ResumeFilename,
 		ResumeFileURL:           candidate.ResumeFileURL,
+		ResumeLanguage:          candidate.ResumeLanguage,
+		Language:                candidate.ResumeLanguage,
 		ResumeUploadedAt:        candidate.ResumeUploadedAt,
 		ResumeEvaluated:         candidate.ResumeEvaluated,
 		ScreeningStatus:         candidate.ScreeningStatus,

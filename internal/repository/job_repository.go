@@ -32,13 +32,19 @@ type JobMemberWithUser struct {
 	CreatedAt  time.Time
 }
 
+type JobDetailItem struct {
+	model.Job
+	OwnerRealName   *string
+	CreatorRealName *string
+}
+
 type JobRepository interface {
 	Create(ctx context.Context, job *model.Job) error
 	CreateWithTags(ctx context.Context, job *model.Job, tagIDs []int64) error
 	Update(ctx context.Context, job *model.Job) error
 	UpdateWithTags(ctx context.Context, job *model.Job, tagIDs []int64, syncTags bool) error
-	FindByID(ctx context.Context, id int64) (*model.Job, error)
-	List(ctx context.Context, keyword string, categoryID *int64, status string, page int, pageSize int) ([]*model.Job, int64, error)
+	FindByID(ctx context.Context, id int64) (*JobDetailItem, error)
+	List(ctx context.Context, keyword string, categoryID *int64, status string, page int, pageSize int) ([]JobDetailItem, int64, error)
 	Delete(ctx context.Context, id int64) error
 
 	// CategoryExists 判断岗位分类是否存在，用于创建或更新岗位时校验 category_id 是否合法。
@@ -128,10 +134,14 @@ func updateJobFields(db *gorm.DB, job *model.Job) error {
 		}).Error
 }
 
-func (r *jobRepository) FindByID(ctx context.Context, id int64) (*model.Job, error) {
-	job := &model.Job{}
+func (r *jobRepository) FindByID(ctx context.Context, id int64) (*JobDetailItem, error) {
+	job := &JobDetailItem{}
 	err := r.db.WithContext(ctx).
-		Where("id = ?", id).
+		Model(&model.Job{}).
+		Select(jobDetailSelectColumns).
+		Joins("LEFT JOIN "+model.TableNameUser+" AS owner_user ON owner_user.id = jobs.owner_user_id").
+		Joins("LEFT JOIN "+model.TableNameUser+" AS creator_user ON creator_user.id = jobs.created_by").
+		Where("jobs.id = ?", id).
 		First(job).Error
 	if err != nil {
 		return nil, err
@@ -147,19 +157,19 @@ func (r *jobRepository) List(
 	status string,
 	page int,
 	pageSize int,
-) ([]*model.Job, int64, error) {
+) ([]JobDetailItem, int64, error) {
 	queryBuilder := r.db.WithContext(ctx).Model(&model.Job{})
 
 	if keyword != "" {
-		queryBuilder = queryBuilder.Where("title LIKE ?", "%"+keyword+"%")
+		queryBuilder = queryBuilder.Where("jobs.title LIKE ?", "%"+keyword+"%")
 	}
 
 	if categoryID != nil {
-		queryBuilder = queryBuilder.Where("category_id = ?", *categoryID)
+		queryBuilder = queryBuilder.Where("jobs.category_id = ?", *categoryID)
 	}
 
 	if status != "" {
-		queryBuilder = queryBuilder.Where("status = ?", status)
+		queryBuilder = queryBuilder.Where("jobs.status = ?", status)
 	}
 
 	var total int64
@@ -167,8 +177,11 @@ func (r *jobRepository) List(
 		return nil, 0, err
 	}
 
-	items := make([]*model.Job, 0)
+	items := make([]JobDetailItem, 0)
 	err := queryBuilder.
+		Select(jobDetailSelectColumns).
+		Joins("LEFT JOIN " + model.TableNameUser + " AS owner_user ON owner_user.id = jobs.owner_user_id").
+		Joins("LEFT JOIN " + model.TableNameUser + " AS creator_user ON creator_user.id = jobs.created_by").
 		Order("id DESC").
 		Limit(pageSize).
 		Offset((page - 1) * pageSize).
@@ -179,6 +192,12 @@ func (r *jobRepository) List(
 
 	return items, total, nil
 }
+
+const jobDetailSelectColumns = `
+	jobs.*,
+	owner_user.real_name AS owner_real_name,
+	creator_user.real_name AS creator_real_name
+`
 
 func (r *jobRepository) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

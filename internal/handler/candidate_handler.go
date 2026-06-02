@@ -128,7 +128,7 @@ func (h *CandidateHandler) createWithResume(c *gin.Context) {
 		return
 	}
 
-	response.Created(c, gin.H{"id": candidateID, "resumeId": resumeID})
+	response.Created(c, gin.H{"id": candidateID, "resumeId": resumeID, "language": resumeReq.Language, "resumeLanguage": resumeReq.Language})
 }
 
 // UploadResume 给候选人上传/替换简历
@@ -220,10 +220,14 @@ func (h *CandidateHandler) BatchAnalyze(c *gin.Context) {
 // @Description 根据 ID 编辑候选人基础档案；支持 positionCategoryId/currentJobId 关联岗位分类和岗位；gender 只接受 男/女，source 只接受 boss/email，highestEducation 只接受 专科/本科/硕士/博士
 // @Tags 候选人
 // @Accept json
+// @Accept multipart/form-data
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "候选人 ID"
 // @Param request body dto.UpdateCandidateRequest true "编辑候选人请求"
+// @Param file formData file false "新的简历文件，multipart 更新时可选"
+// @Param rawText formData string false "简历原始文本"
+// @Param language formData string false "简历语言"
 // @Success 200 {object} response.APIResponse
 // @Failure 400 {object} response.APIResponse
 // @Failure 401 {object} response.APIResponse
@@ -233,6 +237,10 @@ func (h *CandidateHandler) Update(c *gin.Context) {
 	id, ok := parseInt64Param(c, "id")
 	if !ok {
 		response.Error(c, http.StatusBadRequest, 40001, "候选人 ID 不合法", nil)
+		return
+	}
+	if strings.HasPrefix(c.ContentType(), "multipart/form-data") {
+		h.updateWithMultipart(c, id)
 		return
 	}
 
@@ -253,6 +261,87 @@ func (h *CandidateHandler) Update(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"id": id})
+}
+
+func (h *CandidateHandler) updateWithMultipart(c *gin.Context, id int64) {
+	yearsOfExperience, ok := optionalFloat64Form(c, "yearsOfExperience")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "yearsOfExperience 参数不合法", nil)
+		return
+	}
+	positionCategoryID, ok := parseOptionalInt64Form(c, "positionCategoryId")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "positionCategoryId 参数不合法", nil)
+		return
+	}
+	currentJobID, ok := parseOptionalInt64Form(c, "currentJobId")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "currentJobId 参数不合法", nil)
+		return
+	}
+
+	req := dto.UpdateCandidateRequest{
+		Name:                    strings.TrimSpace(c.PostForm("name")),
+		Email:                   optionalFormString(c, "email"),
+		Phone:                   optionalFormString(c, "phone"),
+		Gender:                  optionalFormString(c, "gender"),
+		CurrentCompany:          optionalFormString(c, "currentCompany"),
+		PositionCategoryID:      positionCategoryID,
+		CurrentJobID:            currentJobID,
+		CurrentPosition:         optionalFormString(c, "currentPosition"),
+		CurrentPositionCategory: optionalFormString(c, "currentPositionCategory"),
+		YearsOfExperience:       yearsOfExperience,
+		HighestEducation:        optionalFormString(c, "highestEducation"),
+		School:                  optionalFormString(c, "school"),
+		Major:                   optionalFormString(c, "major"),
+		Location:                optionalFormString(c, "location"),
+		Source:                  optionalFormString(c, "source"),
+		Status:                  strings.TrimSpace(c.PostForm("status")),
+	}
+	if req.Status == "" {
+		response.Error(c, http.StatusBadRequest, 40001, "status 不能为空", nil)
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil && !errors.Is(err, http.ErrMissingFile) {
+		response.Error(c, http.StatusBadRequest, 40001, "简历文件参数错误", err.Error())
+		return
+	}
+	if file == nil {
+		if err := h.service.Update(c.Request.Context(), id, req); err != nil {
+			if errors.Is(err, service.ErrUnauthenticated) {
+				response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
+				return
+			}
+
+			response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
+			return
+		}
+
+		response.Success(c, gin.H{"id": id})
+		return
+	}
+
+	resumeReq, objectKey, err := h.uploadCandidateResumeFile(c, file)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, 50001, "上传简历文件失败", err.Error())
+		return
+	}
+
+	resumeID, err := h.service.UpdateWithResume(c.Request.Context(), id, req, resumeReq)
+	if err != nil {
+		_ = h.uploader.Delete(c.Request.Context(), objectKey)
+		if errors.Is(err, service.ErrUnauthenticated) {
+			response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
+			return
+		}
+
+		response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
+		return
+	}
+
+	response.Success(c, gin.H{"id": id, "resumeId": resumeID, "language": resumeReq.Language, "resumeLanguage": resumeReq.Language})
 }
 
 // List 查询候选人列表

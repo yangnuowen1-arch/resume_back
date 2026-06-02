@@ -31,6 +31,7 @@ type CandidateListItem struct {
 	ResumeID                *int64
 	ResumeFilename          *string
 	ResumeFileURL           *string
+	ResumeLanguage          *string
 	ResumeUploadedAt        *time.Time
 	ResumeEvaluated         bool
 	ScreeningStatus         *string
@@ -71,6 +72,7 @@ type CandidateRepository interface {
 	CreateResumeForCandidate(ctx context.Context, candidateID int64, resume *model.Resume, candidateStatus string) error
 	EnqueueScreening(ctx context.Context, candidateID int64, jobID *int64, createdBy int64, candidateStatus string) CandidateAnalysisResult
 	Update(ctx context.Context, candidate *model.Candidate) error
+	UpdateWithResume(ctx context.Context, candidate *model.Candidate, resume *model.Resume) error
 	FindByID(ctx context.Context, id int64) (*model.Candidate, error)
 	List(ctx context.Context, filter CandidateListFilter) ([]CandidateListItem, int64, error)
 	ActivePositionCategoryExists(ctx context.Context, id int64) (bool, error)
@@ -218,24 +220,41 @@ func (r *candidateRepository) Update(ctx context.Context, candidate *model.Candi
 	return r.db.WithContext(ctx).
 		Model(&model.Candidate{}).
 		Where("id = ?", candidate.ID).
-		Updates(map[string]interface{}{
-			"name":                      candidate.Name,
-			"email":                     candidate.Email,
-			"phone":                     candidate.Phone,
-			"gender":                    candidate.Gender,
-			"current_company":           candidate.CurrentCompany,
-			"position_category_id":      candidate.PositionCategoryID,
-			"current_job_id":            candidate.CurrentJobID,
-			"current_position":          candidate.CurrentPosition,
-			"current_position_category": candidate.CurrentPositionCategory,
-			"years_of_experience":       candidate.YearsOfExperience,
-			"highest_education":         candidate.HighestEducation,
-			"school":                    candidate.School,
-			"major":                     candidate.Major,
-			"location":                  candidate.Location,
-			"source":                    candidate.Source,
-			"status":                    candidate.Status,
-		}).Error
+		Updates(candidateUpdateMap(candidate)).Error
+}
+
+func (r *candidateRepository) UpdateWithResume(ctx context.Context, candidate *model.Candidate, resume *model.Resume) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.Candidate{}).
+			Where("id = ?", candidate.ID).
+			Updates(candidateUpdateMap(candidate)).Error; err != nil {
+			return err
+		}
+
+		resume.CandidateID = &candidate.ID
+		return tx.Create(resume).Error
+	})
+}
+
+func candidateUpdateMap(candidate *model.Candidate) map[string]interface{} {
+	return map[string]interface{}{
+		"name":                      candidate.Name,
+		"email":                     candidate.Email,
+		"phone":                     candidate.Phone,
+		"gender":                    candidate.Gender,
+		"current_company":           candidate.CurrentCompany,
+		"position_category_id":      candidate.PositionCategoryID,
+		"current_job_id":            candidate.CurrentJobID,
+		"current_position":          candidate.CurrentPosition,
+		"current_position_category": candidate.CurrentPositionCategory,
+		"years_of_experience":       candidate.YearsOfExperience,
+		"highest_education":         candidate.HighestEducation,
+		"school":                    candidate.School,
+		"major":                     candidate.Major,
+		"location":                  candidate.Location,
+		"source":                    candidate.Source,
+		"status":                    candidate.Status,
+	}
 }
 
 func (r *candidateRepository) FindByID(ctx context.Context, id int64) (*model.Candidate, error) {
@@ -348,6 +367,7 @@ const candidateListSelectColumns = `
 	latest_resume.id AS resume_id,
 	latest_resume.original_filename AS resume_filename,
 	latest_resume.file_url AS resume_file_url,
+	latest_resume.language AS resume_language,
 	latest_resume.uploaded_at AS resume_uploaded_at,
 	COALESCE(latest_screening.status = 'success', false) AS resume_evaluated,
 	latest_screening.status AS screening_status,
@@ -366,7 +386,7 @@ const candidateListPositionCategoryJoin = `
 
 const candidateListLatestResumeJoin = `
 	LEFT JOIN LATERAL (
-		SELECT id, original_filename, file_url, uploaded_at
+		SELECT id, original_filename, file_url, language, uploaded_at
 		FROM resumes
 		WHERE resumes.candidate_id = candidates.id
 		ORDER BY uploaded_at DESC, id DESC

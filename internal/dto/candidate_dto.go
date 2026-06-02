@@ -71,6 +71,8 @@ type CandidateResponse struct {
 	ResumeID                *int64     `json:"resumeId"`
 	ResumeFilename          *string    `json:"resumeFilename"`
 	ResumeFileURL           *string    `json:"resumeFileUrl"`
+	ResumeLanguage          *string    `json:"resumeLanguage"`
+	Language                *string    `json:"language"`
 	ResumeUploadedAt        *time.Time `json:"resumeUploadedAt"`
 	ResumeEvaluated         bool       `json:"resumeEvaluated"`
 	ScreeningStatus         *string    `json:"screeningStatus"`

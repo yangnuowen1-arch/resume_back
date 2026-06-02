@@ -67,7 +67,9 @@ type JobResponse struct {
 	Status           string                 `json:"status"`
 	Priority         string                 `json:"priority"`
 	OwnerUserID      *int64                 `json:"ownerUserId"`
+	OwnerRealName    *string                `json:"ownerRealName"`
 	CreatedBy        *int64                 `json:"createdBy"`
+	CreatorRealName  *string                `json:"creatorRealName"`
 	PublishedAt      *time.Time             `json:"publishedAt"`
 	ClosedAt         *time.Time             `json:"closedAt"`
 	CreatedAt        time.Time              `json:"createdAt"`

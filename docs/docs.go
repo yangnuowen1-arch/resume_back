@@ -520,7 +520,8 @@ const docTemplate = `{
                 ],
                 "description": "根据 ID 编辑候选人基础档案；支持 positionCategoryId/currentJobId 关联岗位分类和岗位；gender 只接受 男/女，source 只接受 boss/email，highestEducation 只接受 专科/本科/硕士/博士",
                 "consumes": [
-                    "application/json"
+                    "application/json",
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -545,6 +546,24 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/dto.UpdateCandidateRequest"
                         }
+                    },
+                    {
+                        "type": "file",
+                        "description": "新的简历文件，multipart 更新时可选",
+                        "name": "file",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "简历原始文本",
+                        "name": "rawText",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "简历语言",
+                        "name": "language",
+                        "in": "formData"
                     }
                 ],
                 "responses": {
@@ -883,7 +902,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "状态 draft/published/closed",
+                        "description": "状态 all/draft/published/closed，不传或传 all 表示全部",
                         "name": "status",
                         "in": "query"
                     }
@@ -2513,19 +2532,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "gender": {
-                    "enum": [
-                        "男",
-                        "女"
-                    ],
                     "type": "string"
                 },
                 "highestEducation": {
-                    "enum": [
-                        "专科",
-                        "本科",
-                        "硕士",
-                        "博士"
-                    ],
                     "type": "string"
                 },
                 "location": {
@@ -2547,10 +2556,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "source": {
-                    "enum": [
-                        "boss",
-                        "email"
-                    ],
                     "type": "string"
                 },
                 "status": {
@@ -2590,11 +2595,11 @@ const docTemplate = `{
                 "categoryId": {
                     "type": "integer"
                 },
-                "dynamicFields": {
-                    "type": "object"
-                },
                 "description": {
                     "type": "string"
+                },
+                "dynamicFields": {
+                    "type": "object"
                 },
                 "experienceMax": {
                     "type": "integer"
@@ -2830,19 +2835,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "gender": {
-                    "enum": [
-                        "男",
-                        "女"
-                    ],
                     "type": "string"
                 },
                 "highestEducation": {
-                    "enum": [
-                        "专科",
-                        "本科",
-                        "硕士",
-                        "博士"
-                    ],
                     "type": "string"
                 },
                 "location": {
@@ -2864,10 +2859,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "source": {
-                    "enum": [
-                        "boss",
-                        "email"
-                    ],
                     "type": "string"
                 },
                 "status": {
@@ -2910,11 +2901,11 @@ const docTemplate = `{
                 "categoryId": {
                     "type": "integer"
                 },
-                "dynamicFields": {
-                    "type": "object"
-                },
                 "description": {
                     "type": "string"
+                },
+                "dynamicFields": {
+                    "type": "object"
                 },
                 "experienceMax": {
                     "type": "integer"

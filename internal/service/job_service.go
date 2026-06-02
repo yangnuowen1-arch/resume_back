@@ -275,7 +275,7 @@ func (s *jobService) List(ctx context.Context, query dto.JobQuery) ([]dto.JobRes
 
 	result := make([]dto.JobResponse, 0, len(items))
 	for _, item := range items {
-		result = append(result, toJobResponse(item, tagsByJobID[item.ID]))
+		result = append(result, toJobResponse(&item, tagsByJobID[item.ID]))
 	}
 
 	return result, total, nil
@@ -476,7 +476,7 @@ func (s *jobService) normalizeAndValidateJobTagIDs(ctx context.Context, ids []in
 }
 
 // normalizeJobQuery 统一处理岗位列表查询参数。
-// 主要负责修正分页参数，并给状态查询设置默认值，避免 repository 收到不合理的分页条件。
+// 主要负责修正分页参数，并让空状态或 all 表示不按状态过滤。
 func normalizeJobQuery(query dto.JobQuery) dto.JobQuery {
 	if query.Page < 1 {
 		query.Page = 1
@@ -484,8 +484,9 @@ func normalizeJobQuery(query dto.JobQuery) dto.JobQuery {
 	if query.PageSize < 1 || query.PageSize > 200 {
 		query.PageSize = 20
 	}
-	if query.Status == "" {
-		query.Status = "draft"
+	query.Status = strings.TrimSpace(query.Status)
+	if query.Status == "all" {
+		query.Status = ""
 	}
 
 	return query
@@ -534,7 +535,7 @@ func uniquePositiveIDs(ids []int64) []int64 {
 
 // toJobResponse 把数据库模型转换成返回给前端的 DTO。
 // 这样 handler 不直接暴露 model，也能把“数据库字段”和“接口返回字段”的转换集中管理。
-func toJobResponse(job *model.Job, tags []dto.JobTagResponse) dto.JobResponse {
+func toJobResponse(job *repository.JobDetailItem, tags []dto.JobTagResponse) dto.JobResponse {
 	if tags == nil {
 		tags = []dto.JobTagResponse{}
 	}
@@ -556,7 +557,9 @@ func toJobResponse(job *model.Job, tags []dto.JobTagResponse) dto.JobResponse {
 		Status:           job.Status,
 		Priority:         job.Priority,
 		OwnerUserID:      job.OwnerUserID,
+		OwnerRealName:    job.OwnerRealName,
 		CreatedBy:        job.CreatedBy,
+		CreatorRealName:  job.CreatorRealName,
 		PublishedAt:      job.PublishedAt,
 		ClosedAt:         job.ClosedAt,
 		CreatedAt:        job.CreatedAt,
