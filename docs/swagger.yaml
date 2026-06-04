@@ -1328,6 +1328,47 @@ paths:
       summary: 给岗位绑定标签
       tags:
       - 岗位
+  /operation-logs:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询用户操作日志，返回前端表格可直接展示的 Timestamp/User/Action/Details 字段；user 可按用户名、姓名或用户
+        ID 筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 用户筛选：用户名/姓名/用户 ID
+        in: query
+        name: user
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询操作日志列表
+      tags:
+      - 操作日志
   /resumes:
     get:
       consumes:

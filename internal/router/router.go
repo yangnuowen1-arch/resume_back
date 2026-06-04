@@ -75,6 +75,10 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	applicationService := service.NewApplicationService(applicationRepo, jobRepo, resumeRepo, candidateRepo)
 	applicationHandler := handler.NewApplicationHandler(applicationService)
 
+	operationLogRepo := repository.NewOperationLogRepository(db)
+	operationLogService := service.NewOperationLogService(operationLogRepo)
+	operationLogHandler := handler.NewOperationLogHandler(operationLogService)
+
 	//public 路由
 	authRouter := api.Group("/auth")
 	{
@@ -84,7 +88,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	//private 路由 private 这个 group 挂了鉴权中间件，所以这两个接口需要带 token
 	private := api.Group("")
-	private.Use(middleware.AuthMiddleware(cfg))
+	private.Use(middleware.AuthMiddleware(cfg), middleware.OperationLogMiddleware(operationLogService))
 	{
 		private.GET("/job-categories", jobCategoryHandler.List)
 		private.POST("/job-categories", jobCategoryHandler.Create)
@@ -129,6 +133,8 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 		private.GET("/applications", applicationHandler.List)
 		private.POST("/applications", applicationHandler.Create)
+
+		private.GET("/operation-logs", operationLogHandler.List)
 	}
 
 	return r
