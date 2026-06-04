@@ -51,6 +51,8 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	candidateRepo := repository.NewCandidateRepository(db)
 	candidateService := service.NewCandidateService(candidateRepo)
+	screeningTaskRepo := repository.NewScreeningTaskRepository(db)
+	screeningTaskService := service.NewScreeningTaskService(screeningTaskRepo)
 
 	resumeRepo := repository.NewResumeRepository(db)
 	resumeService := service.NewResumeService(resumeRepo, candidateRepo)
@@ -69,6 +71,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		resumeUploader = r2Uploader
 	}
 	candidateHandler := handler.NewCandidateHandler(candidateService, resumeUploader)
+	screeningTaskHandler := handler.NewScreeningTaskHandler(screeningTaskService)
 	resumeHandler := handler.NewResumeHandler(resumeService, resumeUploader)
 
 	applicationRepo := repository.NewApplicationRepository(db)
@@ -127,6 +130,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		private.POST("/candidates/:id/resume", candidateHandler.UploadResume)
 		private.PUT("/candidates/:id", candidateHandler.Update)
 		private.GET("/candidate-statuses", candidateHandler.ListStatuses)
+		private.GET("/screening-tasks", screeningTaskHandler.List)
 
 		private.GET("/resumes", resumeHandler.List)
 		private.POST("/resumes/upload", resumeHandler.Upload)
