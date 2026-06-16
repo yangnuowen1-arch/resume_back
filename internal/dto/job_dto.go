@@ -78,6 +78,45 @@ type JobResponse struct {
 	DynamicFields    map[string]interface{} `json:"dynamicFields"`
 }
 
+type JobScreeningContextResponse struct {
+	JobID      int64                      `json:"jobId"`
+	JobTitle   string                     `json:"jobTitle"`
+	JobContext string                     `json:"jobContext"`
+	Payload    JobScreeningContextPayload `json:"payload"`
+}
+
+type JobScreeningContextPayload struct {
+	ContextVersion   string                 `json:"context_version"`
+	JobID            int64                  `json:"job_id"`
+	JobTitle         string                 `json:"job_title"`
+	CategoryID       *int64                 `json:"category_id"`
+	Department       *string                `json:"department"`
+	Headcount        int32                  `json:"headcount"`
+	WorkLocation     *string                `json:"work_location"`
+	WorkType         *string                `json:"work_type"`
+	EmploymentType   *string                `json:"employment_type"`
+	SalaryMin        *int32                 `json:"salary_min"`
+	SalaryMax        *int32                 `json:"salary_max"`
+	SalaryMonths     *int32                 `json:"salary_months"`
+	ExperienceMin    *int32                 `json:"experience_min"`
+	ExperienceMax    *int32                 `json:"experience_max"`
+	EducationLevel   *string                `json:"education_level"`
+	Description      *string                `json:"description"`
+	Responsibilities *string                `json:"responsibilities"`
+	Requirements     *string                `json:"requirements"`
+	BonusPoints      *string                `json:"bonus_points"`
+	Priority         string                 `json:"priority"`
+	Tags             []JobScreeningTag      `json:"tags"`
+	DynamicFields    map[string]interface{} `json:"dynamic_fields"`
+}
+
+type JobScreeningTag struct {
+	ID      int64   `json:"id"`
+	GroupID *int64  `json:"group_id"`
+	Name    string  `json:"name"`
+	Color   *string `json:"color"`
+}
+
 type BindJobTagsRequest struct {
 	TagIDs []int64 `json:"tagIds" binding:"required"`
 }

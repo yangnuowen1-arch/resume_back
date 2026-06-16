@@ -16,6 +16,7 @@ type JobService interface {
 	Create(ctx context.Context, req dto.CreateJobRequest) (int64, error)
 	Update(ctx context.Context, id int64, req dto.UpdateJobRequest) error
 	Get(ctx context.Context, id int64) (dto.JobResponse, error)
+	GetScreeningContext(ctx context.Context, id int64) (dto.JobScreeningContextResponse, error)
 	List(ctx context.Context, query dto.JobQuery) ([]dto.JobResponse, int64, error)
 	Delete(ctx context.Context, id int64) error
 	BindTags(ctx context.Context, jobID int64, req dto.BindJobTagsRequest) error
@@ -248,6 +249,24 @@ func (s *jobService) Get(ctx context.Context, id int64) (dto.JobResponse, error)
 	}
 
 	return toJobResponse(job, tagResponses), nil
+}
+
+func (s *jobService) GetScreeningContext(ctx context.Context, id int64) (dto.JobScreeningContextResponse, error) {
+	if id <= 0 {
+		return dto.JobScreeningContextResponse{}, errors.New("岗位 ID 不合法")
+	}
+
+	job, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return dto.JobScreeningContextResponse{}, errors.New("岗位不存在")
+	}
+
+	tags, err := s.repo.ListTags(ctx, id)
+	if err != nil {
+		return dto.JobScreeningContextResponse{}, err
+	}
+
+	return buildJobScreeningContextResponse(job, tags)
 }
 
 func (s *jobService) List(ctx context.Context, query dto.JobQuery) ([]dto.JobResponse, int64, error) {
@@ -575,6 +594,63 @@ func toJobDynamicFields(fields datatypes.JSONMap) map[string]interface{} {
 	}
 
 	return map[string]interface{}(fields)
+}
+
+func buildJobScreeningContextResponse(job *repository.JobDetailItem, tags []repository.JobTagWithTag) (dto.JobScreeningContextResponse, error) {
+	payload := dto.JobScreeningContextPayload{
+		ContextVersion:   "job_screening_context_v1",
+		JobID:            job.ID,
+		JobTitle:         job.Title,
+		CategoryID:       job.CategoryID,
+		Department:       job.Department,
+		Headcount:        job.Headcount,
+		WorkLocation:     job.WorkLocation,
+		WorkType:         job.WorkType,
+		EmploymentType:   job.EmploymentType,
+		SalaryMin:        job.SalaryMin,
+		SalaryMax:        job.SalaryMax,
+		SalaryMonths:     job.SalaryMonths,
+		ExperienceMin:    job.ExperienceMin,
+		ExperienceMax:    job.ExperienceMax,
+		EducationLevel:   job.EducationLevel,
+		Description:      job.Description,
+		Responsibilities: job.Responsibilities,
+		Requirements:     job.Requirements,
+		BonusPoints:      job.BonusPoints,
+		Priority:         job.Priority,
+		Tags:             toJobScreeningTags(tags),
+		DynamicFields:    toJobDynamicFields(job.DynamicFields),
+	}
+
+	encoded, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return dto.JobScreeningContextResponse{}, errors.New("生成岗位筛选上下文失败")
+	}
+
+	return dto.JobScreeningContextResponse{
+		JobID:      job.ID,
+		JobTitle:   job.Title,
+		JobContext: string(encoded),
+		Payload:    payload,
+	}, nil
+}
+
+func toJobScreeningTags(items []repository.JobTagWithTag) []dto.JobScreeningTag {
+	if len(items) == 0 {
+		return []dto.JobScreeningTag{}
+	}
+
+	result := make([]dto.JobScreeningTag, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.JobScreeningTag{
+			ID:      item.TagID,
+			GroupID: item.GroupID,
+			Name:    item.Name,
+			Color:   item.Color,
+		})
+	}
+
+	return result
 }
 
 func toJobTagResponse(item repository.JobTagWithTag) dto.JobTagResponse {

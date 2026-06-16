@@ -13,10 +13,15 @@ type ResumeListItem struct {
 	CandidateID      *int64
 	CandidateName    *string
 	OriginalFilename *string
+	FileKey          *string
 	FileURL          *string
 	FileType         *string
 	FileSize         *int64
 	RawText          *string
+	ParsedData       *string
+	ParseStatus      string
+	ParseError       *string
+	ParsedAt         *time.Time
 	Language         *string
 	UploadBy         *int64
 	UploadedAt       time.Time
@@ -28,6 +33,9 @@ type ResumeRepository interface {
 	Create(ctx context.Context, resume *model.Resume) error
 	FindByID(ctx context.Context, id int64) (*model.Resume, error)
 	List(ctx context.Context, keyword string, candidateID *int64, language string, page int, pageSize int) ([]ResumeListItem, int64, error)
+	MarkParsing(ctx context.Context, id int64) error
+	MarkParsed(ctx context.Context, id int64, rawText string, parsedData *string, language *string, parsedAt time.Time) error
+	MarkParseFailed(ctx context.Context, id int64, message string) error
 }
 
 type resumeRepository struct {
@@ -88,7 +96,7 @@ func (r *resumeRepository) List(
 
 	items := make([]ResumeListItem, 0)
 	err := queryBuilder.
-		Select("resumes.id, resumes.candidate_id, candidates.name AS candidate_name, resumes.original_filename, resumes.file_url, resumes.file_type, resumes.file_size, resumes.raw_text, resumes.language, resumes.upload_by, resumes.uploaded_at, resumes.created_at, resumes.updated_at").
+		Select("resumes.id, resumes.candidate_id, candidates.name AS candidate_name, resumes.original_filename, resumes.file_key, resumes.file_url, resumes.file_type, resumes.file_size, resumes.raw_text, resumes.parsed_data, resumes.parse_status, resumes.parse_error, resumes.parsed_at, resumes.language, resumes.upload_by, resumes.uploaded_at, resumes.created_at, resumes.updated_at").
 		Order("resumes.id DESC").
 		Limit(pageSize).
 		Offset((page - 1) * pageSize).
@@ -98,4 +106,48 @@ func (r *resumeRepository) List(
 	}
 
 	return items, total, nil
+}
+
+func (r *resumeRepository) MarkParsing(ctx context.Context, id int64) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).
+		Model(&model.Resume{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"parse_status": "parsing",
+			"parse_error":  nil,
+			"updated_at":   now,
+		}).Error
+}
+
+func (r *resumeRepository) MarkParsed(ctx context.Context, id int64, rawText string, parsedData *string, language *string, parsedAt time.Time) error {
+	updates := map[string]interface{}{
+		"raw_text":     rawText,
+		"parsed_data":  parsedData,
+		"parse_status": "parsed",
+		"parse_error":  nil,
+		"parsed_at":    parsedAt,
+		"updated_at":   parsedAt,
+	}
+	if language != nil {
+		updates["language"] = language
+	}
+
+	return r.db.WithContext(ctx).
+		Model(&model.Resume{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
+func (r *resumeRepository) MarkParseFailed(ctx context.Context, id int64, message string) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).
+		Model(&model.Resume{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"parse_status": "failed",
+			"parse_error":  message,
+			"parsed_at":    nil,
+			"updated_at":   now,
+		}).Error
 }

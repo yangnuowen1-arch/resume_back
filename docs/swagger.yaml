@@ -240,6 +240,8 @@ definitions:
         type: string
       createdAt:
         type: string
+      fileKey:
+        type: string
       fileSize:
         type: integer
       fileType:
@@ -252,6 +254,14 @@ definitions:
         type: string
       originalFilename:
         type: string
+      parseError:
+        type: string
+      parseStatus:
+        type: string
+      parsedAt:
+        type: string
+      parsedData:
+        type: string
       rawText:
         type: string
       updatedAt:
@@ -260,6 +270,18 @@ definitions:
         type: integer
       uploadedAt:
         type: string
+    type: object
+  dto.RunResumeScreeningRequest:
+    properties:
+      jobId:
+        type: integer
+      outputLanguage:
+        type: string
+      resumeId:
+        type: integer
+    required:
+    - jobId
+    - resumeId
     type: object
   dto.UpdateCandidateRequest:
     properties:
@@ -1253,6 +1275,41 @@ paths:
       summary: 给岗位分配成员
       tags:
       - 岗位
+  /jobs/{id}/screening-context:
+    get:
+      consumes:
+      - application/json
+      description: 根据岗位 ID 生成给 Dify/AI 简历筛选使用的稳定 jobContext，包含岗位基础字段、标签和动态字段
+      parameters:
+      - description: 岗位 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询岗位筛选上下文
+      tags:
+      - 岗位
   /jobs/{id}/tags:
     get:
       consumes:
@@ -1421,6 +1478,41 @@ paths:
       summary: 查询简历列表
       tags:
       - 简历
+  /resumes/{id}/parse:
+    post:
+      consumes:
+      - application/json
+      description: 打开已上传的简历文件，调用解析器抽取文本并回写解析状态
+      parameters:
+      - description: 简历 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 解析简历文件
+      tags:
+      - 简历
   /resumes/upload:
     post:
       consumes:
@@ -1493,6 +1585,99 @@ paths:
       summary: 查询角色列表
       tags:
       - 用户
+  /screening-tasks:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询 screening_results 任务记录，可按候选人/岗位关键词、状态、岗位和候选人筛选；返回 candidate/position/aiScore/status/date
+        供前端表格展示
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 候选人姓名/邮箱/手机号/岗位名称关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 筛选任务状态，传 all 表示全部
+        in: query
+        name: status
+        type: string
+      - description: 岗位 ID
+        in: query
+        name: jobId
+        type: integer
+      - description: 候选人 ID
+        in: query
+        name: candidateId
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询简历筛选任务列表
+      tags:
+      - 筛选任务
+  /screening-tasks/run:
+    post:
+      consumes:
+      - application/json
+      description: Go 后端根据 resumeId 和 jobId 读取简历文件与岗位上下文，调用 Dify workflow 后保存 screening_results
+      parameters:
+      - description: 运行简历筛选请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RunResumeScreeningRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 运行 Dify 简历筛选
+      tags:
+      - 筛选任务
   /tag-groups:
     get:
       consumes:

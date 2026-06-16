@@ -76,6 +76,7 @@ func (h *ResumeHandler) Upload(c *gin.Context) {
 	req := dto.UploadResumeRequest{
 		CandidateID:      candidateID,
 		OriginalFilename: originalFilename,
+		FileKey:          uploadResult.Key,
 		FileURL:          uploadResult.URL,
 		FileType:         fileType,
 		FileSize:         file.Size,
@@ -147,6 +148,40 @@ func (h *ResumeHandler) List(c *gin.Context) {
 			TotalPages: totalPages(total, query.PageSize),
 		},
 	})
+}
+
+// Parse 解析简历文件
+// @Summary 解析简历文件
+// @Description 打开已上传的简历文件，调用解析器抽取文本并回写解析状态
+// @Tags 简历
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "简历 ID"
+// @Success 200 {object} response.APIResponse
+// @Failure 400 {object} response.APIResponse
+// @Failure 401 {object} response.APIResponse
+// @Failure 500 {object} response.APIResponse
+// @Router /resumes/{id}/parse [post]
+func (h *ResumeHandler) Parse(c *gin.Context) {
+	id, ok := parseInt64Param(c, "id")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "简历 ID 不合法", nil)
+		return
+	}
+
+	result, err := h.service.Parse(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, service.ErrUnauthenticated) {
+			response.Error(c, http.StatusUnauthorized, 40101, "未登录，请先登录", nil)
+			return
+		}
+
+		response.Error(c, http.StatusBadRequest, 40001, err.Error(), nil)
+		return
+	}
+
+	response.Success(c, result)
 }
 
 func parseOptionalInt64Form(c *gin.Context, key string) (*int64, bool) {

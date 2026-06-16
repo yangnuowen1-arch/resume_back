@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
@@ -31,6 +32,8 @@ type CandidateListItem struct {
 	ResumeID                *int64
 	ResumeFilename          *string
 	ResumeFileURL           *string
+	ResumeParseStatus       *string
+	ResumeParseError        *string
 	ResumeLanguage          *string
 	ResumeUploadedAt        *time.Time
 	ResumeEvaluated         bool
@@ -62,6 +65,7 @@ type CandidateAnalysisResult struct {
 	CandidateID   int64
 	ResumeID      *int64
 	ApplicationID *int64
+	ParseStatus   *string
 	Status        string
 	Message       *string
 }
@@ -142,6 +146,27 @@ func (r *candidateRepository) EnqueueScreening(ctx context.Context, candidateID 
 			return err
 		}
 		result.ResumeID = &resume.ID
+		parseStatus := strings.TrimSpace(resume.ParseStatus)
+		if parseStatus == "" {
+			parseStatus = "pending"
+			if err := tx.Model(&model.Resume{}).
+				Where("id = ?", resume.ID).
+				Update("parse_status", parseStatus).Error; err != nil {
+				return err
+			}
+		}
+		result.ParseStatus = &parseStatus
+
+		if !resumeHasStoredFile(resume) {
+			message := "候选人最新简历文件地址缺失"
+			result.Message = &message
+			return gorm.ErrRecordNotFound
+		}
+		if parseStatus == "failed" {
+			message := "候选人最新简历解析失败，请重新上传或重新解析"
+			result.Message = &message
+			return gorm.ErrRecordNotFound
+		}
 
 		application := &model.Application{}
 		if jobID != nil {
@@ -202,6 +227,9 @@ func (r *candidateRepository) EnqueueScreening(ctx context.Context, candidateID 
 		return nil
 	})
 	if err != nil {
+		if result.Message != nil {
+			return result
+		}
 		message := "候选人分析入队失败"
 		if result.ResumeID == nil {
 			message = "候选人没有可分析的简历"
@@ -214,6 +242,11 @@ func (r *candidateRepository) EnqueueScreening(ctx context.Context, candidateID 
 	}
 
 	return result
+}
+
+func resumeHasStoredFile(resume *model.Resume) bool {
+	return (resume.FileKey != nil && strings.TrimSpace(*resume.FileKey) != "") ||
+		(resume.FileURL != nil && strings.TrimSpace(*resume.FileURL) != "")
 }
 
 func (r *candidateRepository) Update(ctx context.Context, candidate *model.Candidate) error {
@@ -367,6 +400,8 @@ const candidateListSelectColumns = `
 	latest_resume.id AS resume_id,
 	latest_resume.original_filename AS resume_filename,
 	latest_resume.file_url AS resume_file_url,
+	latest_resume.parse_status AS resume_parse_status,
+	latest_resume.parse_error AS resume_parse_error,
 	latest_resume.language AS resume_language,
 	latest_resume.uploaded_at AS resume_uploaded_at,
 	COALESCE(latest_screening.status = 'success', false) AS resume_evaluated,
@@ -386,7 +421,7 @@ const candidateListPositionCategoryJoin = `
 
 const candidateListLatestResumeJoin = `
 	LEFT JOIN LATERAL (
-		SELECT id, original_filename, file_url, language, uploaded_at
+		SELECT id, original_filename, file_url, parse_status, parse_error, language, uploaded_at
 		FROM resumes
 		WHERE resumes.candidate_id = candidates.id
 		ORDER BY uploaded_at DESC, id DESC

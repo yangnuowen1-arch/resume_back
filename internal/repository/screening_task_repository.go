@@ -34,7 +34,25 @@ type ScreeningTaskListFilter struct {
 	PageSize    int
 }
 
+type ScreeningResultSuccessUpdate struct {
+	Score               *float64
+	MatchLevel          *string
+	Recommendation      *string
+	Summary             *string
+	Strengths           *string
+	Weaknesses          *string
+	Risks               *string
+	MissingRequirements *string
+	AIProvider          *string
+	AIModel             *string
+	PromptVersion       *string
+	RawResponse         *string
+}
+
 type ScreeningTaskRepository interface {
+	Create(ctx context.Context, result *model.ScreeningResult) error
+	MarkSuccess(ctx context.Context, id int64, update ScreeningResultSuccessUpdate) error
+	MarkFailed(ctx context.Context, id int64, message string) error
 	List(ctx context.Context, filter ScreeningTaskListFilter) ([]ScreeningTaskListItem, int64, error)
 }
 
@@ -44,6 +62,42 @@ type screeningTaskRepository struct {
 
 func NewScreeningTaskRepository(db *gorm.DB) ScreeningTaskRepository {
 	return &screeningTaskRepository{db: db}
+}
+
+func (r *screeningTaskRepository) Create(ctx context.Context, result *model.ScreeningResult) error {
+	return r.db.WithContext(ctx).Create(result).Error
+}
+
+func (r *screeningTaskRepository) MarkSuccess(ctx context.Context, id int64, update ScreeningResultSuccessUpdate) error {
+	return r.db.WithContext(ctx).
+		Model(&model.ScreeningResult{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"score":                update.Score,
+			"match_level":          update.MatchLevel,
+			"recommendation":       update.Recommendation,
+			"summary":              update.Summary,
+			"strengths":            update.Strengths,
+			"weaknesses":           update.Weaknesses,
+			"risks":                update.Risks,
+			"missing_requirements": update.MissingRequirements,
+			"ai_provider":          update.AIProvider,
+			"ai_model":             update.AIModel,
+			"prompt_version":       update.PromptVersion,
+			"raw_response":         update.RawResponse,
+			"status":               "success",
+			"error_message":        nil,
+		}).Error
+}
+
+func (r *screeningTaskRepository) MarkFailed(ctx context.Context, id int64, message string) error {
+	return r.db.WithContext(ctx).
+		Model(&model.ScreeningResult{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"status":        "failed",
+			"error_message": message,
+		}).Error
 }
 
 func (r *screeningTaskRepository) List(ctx context.Context, filter ScreeningTaskListFilter) ([]ScreeningTaskListItem, int64, error) {

@@ -7,8 +7,10 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/yangnuowen1-arch/resume_back/internal/config"
+	"github.com/yangnuowen1-arch/resume_back/internal/dify"
 	"github.com/yangnuowen1-arch/resume_back/internal/handler"
 	"github.com/yangnuowen1-arch/resume_back/internal/middleware"
+	"github.com/yangnuowen1-arch/resume_back/internal/parser"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
 	"github.com/yangnuowen1-arch/resume_back/internal/service"
 	"github.com/yangnuowen1-arch/resume_back/internal/storage"
@@ -51,11 +53,8 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	candidateRepo := repository.NewCandidateRepository(db)
 	candidateService := service.NewCandidateService(candidateRepo)
-	screeningTaskRepo := repository.NewScreeningTaskRepository(db)
-	screeningTaskService := service.NewScreeningTaskService(screeningTaskRepo)
 
 	resumeRepo := repository.NewResumeRepository(db)
-	resumeService := service.NewResumeService(resumeRepo, candidateRepo)
 	resumeUploader := storage.Uploader(storage.NewLocalUploader("uploads"))
 	if cfg.R2Enabled() {
 		r2Uploader, err := storage.NewR2Uploader(context.Background(), storage.R2Config{
@@ -70,11 +69,36 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		}
 		resumeUploader = r2Uploader
 	}
+
+	var difyClient service.DifyResumeScreeningClient
+	if cfg.DifyEnabled() {
+		difyClient = dify.NewClient(dify.Config{
+			BaseURL:                 cfg.DifyBaseURL,
+			APIKey:                  cfg.DifyAPIKey,
+			User:                    cfg.DifyUser,
+			ResumeFileInputName:     cfg.DifyResumeFileInputName,
+			JobContextInputName:     cfg.DifyJobContextInputName,
+			OutputLanguageInputName: cfg.DifyOutputLanguageInputName,
+			ResultOutputName:        cfg.DifyResultOutputName,
+		})
+	}
+
+	applicationRepo := repository.NewApplicationRepository(db)
+	screeningTaskRepo := repository.NewScreeningTaskRepository(db)
+	screeningTaskService := service.NewScreeningTaskService(screeningTaskRepo, service.ScreeningTaskDependencies{
+		JobRepo:         jobRepo,
+		ResumeRepo:      resumeRepo,
+		ApplicationRepo: applicationRepo,
+		Uploader:        resumeUploader,
+		DifyClient:      difyClient,
+		DifyUser:        cfg.DifyUser,
+	})
+	resumeParser := parser.NewPlainTextParser()
+	resumeService := service.NewResumeService(resumeRepo, candidateRepo, resumeUploader, resumeParser)
 	candidateHandler := handler.NewCandidateHandler(candidateService, resumeUploader)
 	screeningTaskHandler := handler.NewScreeningTaskHandler(screeningTaskService)
 	resumeHandler := handler.NewResumeHandler(resumeService, resumeUploader)
 
-	applicationRepo := repository.NewApplicationRepository(db)
 	applicationService := service.NewApplicationService(applicationRepo, jobRepo, resumeRepo, candidateRepo)
 	applicationHandler := handler.NewApplicationHandler(applicationService)
 
@@ -117,6 +141,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		private.GET("/jobs", jobHandler.List)
 		private.POST("/jobs", jobHandler.Create)
 		private.GET("/jobs/:id", jobHandler.Get)
+		private.GET("/jobs/:id/screening-context", jobHandler.GetScreeningContext)
 		private.PUT("/jobs/:id", jobHandler.Update)
 		private.DELETE("/jobs/:id", jobHandler.Delete)
 		private.GET("/jobs/:id/tags", jobHandler.ListTags)
@@ -130,10 +155,12 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		private.POST("/candidates/:id/resume", candidateHandler.UploadResume)
 		private.PUT("/candidates/:id", candidateHandler.Update)
 		private.GET("/candidate-statuses", candidateHandler.ListStatuses)
+		private.POST("/screening-tasks/run", screeningTaskHandler.RunResumeScreening)
 		private.GET("/screening-tasks", screeningTaskHandler.List)
 
 		private.GET("/resumes", resumeHandler.List)
 		private.POST("/resumes/upload", resumeHandler.Upload)
+		private.POST("/resumes/:id/parse", resumeHandler.Parse)
 
 		private.GET("/applications", applicationHandler.List)
 		private.POST("/applications", applicationHandler.Create)

@@ -21,6 +21,13 @@ const (
 	CandidateStatusRejected      = "rejected"
 )
 
+const (
+	ResumeParseStatusPending = "pending"
+	ResumeParseStatusParsing = "parsing"
+	ResumeParseStatusParsed  = "parsed"
+	ResumeParseStatusFailed  = "failed"
+)
+
 var candidateStatusLabels = map[string]string{
 	CandidateStatusNew:           "新候选人",
 	CandidateStatusPendingReview: "待评估",
@@ -48,6 +55,14 @@ func normalizeStatusFilter(status string) string {
 	}
 
 	return status
+}
+
+func initialResumeParseStatus(rawText *string) string {
+	if rawText != nil && strings.TrimSpace(*rawText) != "" {
+		return ResumeParseStatusParsed
+	}
+
+	return ResumeParseStatusPending
 }
 
 func validateActiveDisabledStatus(status string, fieldName string) error {

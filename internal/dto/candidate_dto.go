@@ -71,6 +71,8 @@ type CandidateResponse struct {
 	ResumeID                *int64     `json:"resumeId"`
 	ResumeFilename          *string    `json:"resumeFilename"`
 	ResumeFileURL           *string    `json:"resumeFileUrl"`
+	ResumeParseStatus       *string    `json:"resumeParseStatus"`
+	ResumeParseError        *string    `json:"resumeParseError,omitempty"`
 	ResumeLanguage          *string    `json:"resumeLanguage"`
 	Language                *string    `json:"language"`
 	ResumeUploadedAt        *time.Time `json:"resumeUploadedAt"`
@@ -98,6 +100,7 @@ type BatchAnalyzeCandidateResult struct {
 	CandidateID   int64   `json:"candidateId"`
 	ResumeID      *int64  `json:"resumeId"`
 	ApplicationID *int64  `json:"applicationId"`
+	ParseStatus   *string `json:"parseStatus,omitempty"`
 	Status        string  `json:"status"`
 	Message       *string `json:"message,omitempty"`
 }

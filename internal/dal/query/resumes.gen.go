@@ -30,11 +30,15 @@ func newResume(db *gorm.DB, opts ...gen.DOOption) resume {
 	_resume.ID = field.NewInt64(tableName, "id")
 	_resume.CandidateID = field.NewInt64(tableName, "candidate_id")
 	_resume.OriginalFilename = field.NewString(tableName, "original_filename")
+	_resume.FileKey = field.NewString(tableName, "file_key")
 	_resume.FileURL = field.NewString(tableName, "file_url")
 	_resume.FileType = field.NewString(tableName, "file_type")
 	_resume.FileSize = field.NewInt64(tableName, "file_size")
 	_resume.RawText = field.NewString(tableName, "raw_text")
 	_resume.ParsedData = field.NewString(tableName, "parsed_data")
+	_resume.ParseStatus = field.NewString(tableName, "parse_status")
+	_resume.ParseError = field.NewString(tableName, "parse_error")
+	_resume.ParsedAt = field.NewTime(tableName, "parsed_at")
 	_resume.Language = field.NewString(tableName, "language")
 	_resume.UploadBy = field.NewInt64(tableName, "upload_by")
 	_resume.UploadedAt = field.NewTime(tableName, "uploaded_at")
@@ -53,11 +57,15 @@ type resume struct {
 	ID               field.Int64
 	CandidateID      field.Int64
 	OriginalFilename field.String
+	FileKey          field.String
 	FileURL          field.String
 	FileType         field.String
 	FileSize         field.Int64
 	RawText          field.String
 	ParsedData       field.String
+	ParseStatus      field.String
+	ParseError       field.String
+	ParsedAt         field.Time
 	Language         field.String
 	UploadBy         field.Int64
 	UploadedAt       field.Time
@@ -82,11 +90,15 @@ func (r *resume) updateTableName(table string) *resume {
 	r.ID = field.NewInt64(table, "id")
 	r.CandidateID = field.NewInt64(table, "candidate_id")
 	r.OriginalFilename = field.NewString(table, "original_filename")
+	r.FileKey = field.NewString(table, "file_key")
 	r.FileURL = field.NewString(table, "file_url")
 	r.FileType = field.NewString(table, "file_type")
 	r.FileSize = field.NewInt64(table, "file_size")
 	r.RawText = field.NewString(table, "raw_text")
 	r.ParsedData = field.NewString(table, "parsed_data")
+	r.ParseStatus = field.NewString(table, "parse_status")
+	r.ParseError = field.NewString(table, "parse_error")
+	r.ParsedAt = field.NewTime(table, "parsed_at")
 	r.Language = field.NewString(table, "language")
 	r.UploadBy = field.NewInt64(table, "upload_by")
 	r.UploadedAt = field.NewTime(table, "uploaded_at")
@@ -116,15 +128,19 @@ func (r *resume) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (r *resume) fillFieldMap() {
-	r.fieldMap = make(map[string]field.Expr, 13)
+	r.fieldMap = make(map[string]field.Expr, 17)
 	r.fieldMap["id"] = r.ID
 	r.fieldMap["candidate_id"] = r.CandidateID
 	r.fieldMap["original_filename"] = r.OriginalFilename
+	r.fieldMap["file_key"] = r.FileKey
 	r.fieldMap["file_url"] = r.FileURL
 	r.fieldMap["file_type"] = r.FileType
 	r.fieldMap["file_size"] = r.FileSize
 	r.fieldMap["raw_text"] = r.RawText
 	r.fieldMap["parsed_data"] = r.ParsedData
+	r.fieldMap["parse_status"] = r.ParseStatus
+	r.fieldMap["parse_error"] = r.ParseError
+	r.fieldMap["parsed_at"] = r.ParsedAt
 	r.fieldMap["language"] = r.Language
 	r.fieldMap["upload_by"] = r.UploadBy
 	r.fieldMap["uploaded_at"] = r.UploadedAt

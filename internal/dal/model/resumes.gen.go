@@ -12,19 +12,23 @@ const TableNameResume = "resumes"
 
 // Resume mapped from table <resumes>
 type Resume struct {
-	ID               int64     `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true" json:"id"`
-	CandidateID      *int64    `gorm:"column:candidate_id;type:bigint" json:"candidate_id"`
-	OriginalFilename *string   `gorm:"column:original_filename;type:character varying(255)" json:"original_filename"`
-	FileURL          *string   `gorm:"column:file_url;type:text" json:"file_url"`
-	FileType         *string   `gorm:"column:file_type;type:character varying(50)" json:"file_type"`
-	FileSize         *int64    `gorm:"column:file_size;type:bigint" json:"file_size"`
-	RawText          *string   `gorm:"column:raw_text;type:text" json:"raw_text"`
-	ParsedData       *string   `gorm:"column:parsed_data;type:jsonb" json:"parsed_data"`
-	Language         *string   `gorm:"column:language;type:character varying(30)" json:"language"`
-	UploadBy         *int64    `gorm:"column:upload_by;type:bigint" json:"upload_by"`
-	UploadedAt       time.Time `gorm:"column:uploaded_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"uploaded_at"`
-	CreatedAt        time.Time `gorm:"column:created_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
-	UpdatedAt        time.Time `gorm:"column:updated_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
+	ID               int64      `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true" json:"id"`
+	CandidateID      *int64     `gorm:"column:candidate_id;type:bigint" json:"candidate_id"`
+	OriginalFilename *string    `gorm:"column:original_filename;type:character varying(255)" json:"original_filename"`
+	FileKey          *string    `gorm:"column:file_key;type:text" json:"file_key"`
+	FileURL          *string    `gorm:"column:file_url;type:text" json:"file_url"`
+	FileType         *string    `gorm:"column:file_type;type:character varying(50)" json:"file_type"`
+	FileSize         *int64     `gorm:"column:file_size;type:bigint" json:"file_size"`
+	RawText          *string    `gorm:"column:raw_text;type:text" json:"raw_text"`
+	ParsedData       *string    `gorm:"column:parsed_data;type:jsonb" json:"parsed_data"`
+	ParseStatus      string     `gorm:"column:parse_status;type:character varying(30);not null;default:pending" json:"parse_status"`
+	ParseError       *string    `gorm:"column:parse_error;type:text" json:"parse_error"`
+	ParsedAt         *time.Time `gorm:"column:parsed_at;type:timestamp without time zone" json:"parsed_at"`
+	Language         *string    `gorm:"column:language;type:character varying(30)" json:"language"`
+	UploadBy         *int64     `gorm:"column:upload_by;type:bigint" json:"upload_by"`
+	UploadedAt       time.Time  `gorm:"column:uploaded_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"uploaded_at"`
+	CreatedAt        time.Time  `gorm:"column:created_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+	UpdatedAt        time.Time  `gorm:"column:updated_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
 }
 
 // TableName Resume's table name

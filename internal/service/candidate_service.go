@@ -154,10 +154,12 @@ func (s *candidateService) CreateWithResume(ctx context.Context, req dto.CreateC
 	}
 	resume := &model.Resume{
 		OriginalFilename: &resumeReq.OriginalFilename,
+		FileKey:          &resumeReq.FileKey,
 		FileURL:          &resumeReq.FileURL,
 		FileType:         &resumeReq.FileType,
 		FileSize:         &resumeReq.FileSize,
 		RawText:          resumeReq.RawText,
+		ParseStatus:      initialResumeParseStatus(resumeReq.RawText),
 		Language:         resumeReq.Language,
 		UploadBy:         &userID,
 	}
@@ -184,10 +186,12 @@ func (s *candidateService) UploadResume(ctx context.Context, id int64, resumeReq
 
 	resume := &model.Resume{
 		OriginalFilename: &resumeReq.OriginalFilename,
+		FileKey:          &resumeReq.FileKey,
 		FileURL:          &resumeReq.FileURL,
 		FileType:         &resumeReq.FileType,
 		FileSize:         &resumeReq.FileSize,
 		RawText:          resumeReq.RawText,
+		ParseStatus:      initialResumeParseStatus(resumeReq.RawText),
 		Language:         resumeReq.Language,
 		UploadBy:         &userID,
 	}
@@ -226,6 +230,7 @@ func (s *candidateService) BatchAnalyze(ctx context.Context, req dto.BatchAnalyz
 			CandidateID:   result.CandidateID,
 			ResumeID:      result.ResumeID,
 			ApplicationID: result.ApplicationID,
+			ParseStatus:   result.ParseStatus,
 			Status:        result.Status,
 			Message:       result.Message,
 		})
@@ -343,10 +348,12 @@ func (s *candidateService) UpdateWithResume(ctx context.Context, id int64, req d
 	}
 	resume := &model.Resume{
 		OriginalFilename: &resumeReq.OriginalFilename,
+		FileKey:          &resumeReq.FileKey,
 		FileURL:          &resumeReq.FileURL,
 		FileType:         &resumeReq.FileType,
 		FileSize:         &resumeReq.FileSize,
 		RawText:          resumeReq.RawText,
+		ParseStatus:      initialResumeParseStatus(resumeReq.RawText),
 		Language:         resumeReq.Language,
 		UploadBy:         &userID,
 	}
@@ -424,12 +431,16 @@ func normalizeCreateCandidateRequest(req *dto.CreateCandidateRequest) {
 
 func normalizeAndValidateUploadResumeRequest(req *dto.UploadResumeRequest) error {
 	req.OriginalFilename = strings.TrimSpace(req.OriginalFilename)
+	req.FileKey = strings.TrimSpace(req.FileKey)
 	req.FileURL = strings.TrimSpace(req.FileURL)
 	req.FileType = strings.TrimSpace(req.FileType)
 	req.RawText = trimOptionalString(req.RawText)
 	req.Language = trimOptionalString(req.Language)
 	if req.OriginalFilename == "" {
 		return errors.New("原始文件名不能为空")
+	}
+	if req.FileKey == "" {
+		return errors.New("简历文件 key 不能为空")
 	}
 	if req.FileURL == "" {
 		return errors.New("简历文件地址不能为空")
@@ -666,6 +677,8 @@ func toCandidateListResponse(candidate repository.CandidateListItem) dto.Candida
 		ResumeID:                candidate.ResumeID,
 		ResumeFilename:          candidate.ResumeFilename,
 		ResumeFileURL:           candidate.ResumeFileURL,
+		ResumeParseStatus:       candidate.ResumeParseStatus,
+		ResumeParseError:        candidate.ResumeParseError,
 		ResumeLanguage:          candidate.ResumeLanguage,
 		Language:                candidate.ResumeLanguage,
 		ResumeUploadedAt:        candidate.ResumeUploadedAt,

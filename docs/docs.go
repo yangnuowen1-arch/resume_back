@@ -1277,6 +1277,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/jobs/{id}/screening-context": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据岗位 ID 生成给 Dify/AI 简历筛选使用的稳定 jobContext，包含岗位基础字段、标签和动态字段",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "岗位"
+                ],
+                "summary": "查询岗位筛选上下文",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "岗位 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/jobs/{id}/tags": {
             "get": {
                 "security": [
@@ -1609,6 +1664,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/resumes/{id}/parse": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "打开已上传的简历文件，调用解析器抽取文本并回写解析状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "简历"
+                ],
+                "summary": "解析简历文件",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "简历 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/roles": {
             "get": {
                 "security": [
@@ -1630,6 +1740,149 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/screening-tasks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询 screening_results 任务记录，可按候选人/岗位关键词、状态、岗位和候选人筛选；返回 candidate/position/aiScore/status/date 供前端表格展示",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "筛选任务"
+                ],
+                "summary": "查询简历筛选任务列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "候选人姓名/邮箱/手机号/岗位名称关键词",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "筛选任务状态，传 all 表示全部",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "岗位 ID",
+                        "name": "jobId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "候选人 ID",
+                        "name": "candidateId",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/screening-tasks/run": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Go 后端根据 resumeId 和 jobId 读取简历文件与岗位上下文，调用 Dify workflow 后保存 screening_results",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "筛选任务"
+                ],
+                "summary": "运行 Dify 简历筛选",
+                "parameters": [
+                    {
+                        "description": "运行简历筛选请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.RunResumeScreeningRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.APIResponse"
                         }
@@ -2842,6 +3095,9 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
+                "fileKey": {
+                    "type": "string"
+                },
                 "fileSize": {
                     "type": "integer"
                 },
@@ -2860,6 +3116,18 @@ const docTemplate = `{
                 "originalFilename": {
                     "type": "string"
                 },
+                "parseError": {
+                    "type": "string"
+                },
+                "parseStatus": {
+                    "type": "string"
+                },
+                "parsedAt": {
+                    "type": "string"
+                },
+                "parsedData": {
+                    "type": "string"
+                },
                 "rawText": {
                     "type": "string"
                 },
@@ -2871,6 +3139,24 @@ const docTemplate = `{
                 },
                 "uploadedAt": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.RunResumeScreeningRequest": {
+            "type": "object",
+            "required": [
+                "jobId",
+                "resumeId"
+            ],
+            "properties": {
+                "jobId": {
+                    "type": "integer"
+                },
+                "outputLanguage": {
+                    "type": "string"
+                },
+                "resumeId": {
+                    "type": "integer"
                 }
             }
         },

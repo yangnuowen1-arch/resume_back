@@ -15,3 +15,13 @@ R2_ACCESS_KEY_ID=your_r2_s3_access_key_id
 R2_SECRET_ACCESS_KEY=your_r2_s3_secret_access_key
 # Optional. Set this only when the bucket is public or you use a custom public domain.
 R2_PUBLIC_BASE_URL=
+
+# Optional: Dify workflow integration for AI resume screening.
+# DIFY_BASE_URL can be either https://api.dify.ai or https://api.dify.ai/v1.
+DIFY_BASE_URL=https://api.dify.ai/v1
+DIFY_API_KEY=app-nofTI11DJdwON3CUQBkaW0Ai
+DIFY_USER=resume_back
+DIFY_RESUME_FILE_INPUT_NAME=resume_file
+DIFY_JOB_CONTEXT_INPUT_NAME=job_context
+DIFY_OUTPUT_LANGUAGE_INPUT_NAME=output_language
+DIFY_RESULT_OUTPUT_NAME=screening_result

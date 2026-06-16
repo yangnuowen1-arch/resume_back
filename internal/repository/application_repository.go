@@ -38,6 +38,7 @@ type ApplicationListFilter struct {
 
 type ApplicationRepository interface {
 	Create(ctx context.Context, application *model.Application) error
+	FindOrCreateForScreening(ctx context.Context, jobID int64, resumeID int64, candidateID *int64, createdBy int64) (*model.Application, error)
 	List(ctx context.Context, filter ApplicationListFilter) ([]ApplicationListItem, int64, error)
 }
 
@@ -53,6 +54,35 @@ func NewApplicationRepository(db *gorm.DB) ApplicationRepository {
 
 func (r *applicationRepository) Create(ctx context.Context, application *model.Application) error {
 	return r.db.WithContext(ctx).Create(application).Error
+}
+
+func (r *applicationRepository) FindOrCreateForScreening(ctx context.Context, jobID int64, resumeID int64, candidateID *int64, createdBy int64) (*model.Application, error) {
+	application := &model.Application{}
+	err := r.db.WithContext(ctx).
+		Where("job_id = ? AND resume_id = ?", jobID, resumeID).
+		Order("id DESC").
+		First(application).Error
+	if err == nil {
+		return application, nil
+	}
+	if err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	source := "ai_screening"
+	application = &model.Application{
+		JobID:       jobID,
+		CandidateID: candidateID,
+		ResumeID:    resumeID,
+		Source:      &source,
+		Status:      "screening",
+		CreatedBy:   &createdBy,
+	}
+	if err := r.db.WithContext(ctx).Create(application).Error; err != nil {
+		return nil, err
+	}
+
+	return application, nil
 }
 
 func (r *applicationRepository) List(ctx context.Context, filter ApplicationListFilter) ([]ApplicationListItem, int64, error) {

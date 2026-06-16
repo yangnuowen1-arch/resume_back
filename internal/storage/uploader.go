@@ -21,8 +21,15 @@ type UploadResult struct {
 	URL string
 }
 
+type Object struct {
+	Body          io.ReadCloser
+	ContentType   string
+	ContentLength *int64
+}
+
 type Uploader interface {
 	Upload(ctx context.Context, key string, file *multipart.FileHeader, contentType string) (*UploadResult, error)
+	Open(ctx context.Context, key string) (*Object, error)
 	Delete(ctx context.Context, key string) error
 }
 
@@ -61,6 +68,26 @@ func (u *LocalUploader) Upload(ctx context.Context, key string, file *multipart.
 	return &UploadResult{
 		Key: key,
 		URL: "/" + filepath.ToSlash(targetPath),
+	}, nil
+}
+
+// LocalUploader.Open — 从本地文件系统读取文件
+func (u *LocalUploader) Open(ctx context.Context, key string) (*Object, error) {
+	file, err := os.Open(filepath.Join(u.root, filepath.FromSlash(key)))
+	if err != nil {
+		return nil, err
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+
+	size := stat.Size()
+	return &Object{
+		Body:          file,
+		ContentLength: &size,
 	}, nil
 }
 
@@ -128,6 +155,28 @@ func (u *R2Uploader) Upload(ctx context.Context, key string, file *multipart.Fil
 	return &UploadResult{
 		Key: key,
 		URL: u.objectURL(key),
+	}, nil
+}
+
+// R2Uploader.Open — 从云存储（Cloudflare R2 / S3 兼容）读取文件
+func (u *R2Uploader) Open(ctx context.Context, key string) (*Object, error) {
+	output, err := u.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(u.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	contentType := ""
+	if output.ContentType != nil {
+		contentType = *output.ContentType
+	}
+
+	return &Object{
+		Body:          output.Body,
+		ContentType:   contentType,
+		ContentLength: output.ContentLength,
 	}, nil
 }
 

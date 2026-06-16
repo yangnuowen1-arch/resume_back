@@ -69,3 +69,23 @@ func TestToScreeningTaskResponseSetsTableDisplayFields(t *testing.T) {
 		t.Fatalf("expected date %v, got %v", now, resp.Date)
 	}
 }
+
+func TestParseScreeningAIOutputAcceptsJSONCodeFence(t *testing.T) {
+	result, err := parseScreeningAIOutput("```json\n{\"score\":86,\"match_level\":\"strong\",\"recommendation\":\"recommend_interview\",\"summary\":\"匹配\",\"strengths\":[\"Go\"],\"weaknesses\":[],\"risks\":[],\"missing_requirements\":[],\"markdown_report\":\"## Report\"}\n```")
+	if err != nil {
+		t.Fatalf("parse screening AI output: %v", err)
+	}
+
+	if result.Score != 86 {
+		t.Fatalf("expected score 86, got %v", result.Score)
+	}
+	if result.MarkdownReport == nil || *result.MarkdownReport != "## Report" {
+		t.Fatalf("expected markdown report, got %#v", result.MarkdownReport)
+	}
+}
+
+func TestParseScreeningAIOutputRejectsInvalidScore(t *testing.T) {
+	if _, err := parseScreeningAIOutput("{\"score\":120}"); err == nil {
+		t.Fatal("expected invalid score to be rejected")
+	}
+}

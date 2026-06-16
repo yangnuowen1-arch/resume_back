@@ -438,6 +438,7 @@ func (h *CandidateHandler) uploadCandidateResumeFile(c *gin.Context, fileHeader 
 
 	return dto.UploadResumeRequest{
 		OriginalFilename: originalFilename,
+		FileKey:          uploadResult.Key,
 		FileURL:          uploadResult.URL,
 		FileType:         fileType,
 		FileSize:         fileHeader.Size,
