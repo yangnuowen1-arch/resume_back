@@ -52,7 +52,6 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	jobHandler := handler.NewJobHandler(jobService)
 
 	candidateRepo := repository.NewCandidateRepository(db)
-	candidateService := service.NewCandidateService(candidateRepo)
 
 	resumeRepo := repository.NewResumeRepository(db)
 	resumeUploader := storage.Uploader(storage.NewLocalUploader("uploads"))
@@ -92,8 +91,12 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		Uploader:        resumeUploader,
 		DifyClient:      difyClient,
 		DifyUser:        cfg.DifyUser,
+		WorkerCount:     cfg.DifyScreeningWorkerCount,
 	})
 	resumeParser := parser.NewPlainTextParser()
+	candidateService := service.NewCandidateService(candidateRepo, service.CandidateServiceDependencies{
+		ScreeningTaskEnqueuer: screeningTaskService,
+	})
 	resumeService := service.NewResumeService(resumeRepo, candidateRepo, resumeUploader, resumeParser)
 	candidateHandler := handler.NewCandidateHandler(candidateService, resumeUploader)
 	screeningTaskHandler := handler.NewScreeningTaskHandler(screeningTaskService)

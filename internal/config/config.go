@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -32,6 +33,7 @@ type Config struct {
 	DifyJobContextInputName     string
 	DifyOutputLanguageInputName string
 	DifyResultOutputName        string
+	DifyScreeningWorkerCount    int
 }
 
 func LoadConfig() *Config {
@@ -63,6 +65,7 @@ func LoadConfig() *Config {
 		DifyJobContextInputName:     getEnv("DIFY_JOB_CONTEXT_INPUT_NAME", "job_context"),
 		DifyOutputLanguageInputName: getEnv("DIFY_OUTPUT_LANGUAGE_INPUT_NAME", "output_language"),
 		DifyResultOutputName:        getEnv("DIFY_RESULT_OUTPUT_NAME", "screening_result"),
+		DifyScreeningWorkerCount:    getEnvInt("DIFY_SCREENING_WORKER_COUNT", 3),
 	}
 }
 
@@ -83,4 +86,18 @@ func getEnv(key string, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+
+	return parsed
 }

@@ -21,8 +21,17 @@ type CandidateService interface {
 	StatusOptions() []dto.CandidateStatusOption
 }
 
+type ScreeningTaskEnqueuer interface {
+	EnqueueResumeScreening(ctx context.Context, job ScreeningTaskQueueJob) error
+}
+
+type CandidateServiceDependencies struct {
+	ScreeningTaskEnqueuer ScreeningTaskEnqueuer
+}
+
 type candidateService struct {
-	repo repository.CandidateRepository
+	repo                  repository.CandidateRepository
+	screeningTaskEnqueuer ScreeningTaskEnqueuer
 }
 
 const (
@@ -55,10 +64,15 @@ var (
 	}
 )
 
-func NewCandidateService(repo repository.CandidateRepository) CandidateService {
-	return &candidateService{
+func NewCandidateService(repo repository.CandidateRepository, deps ...CandidateServiceDependencies) CandidateService {
+	service := &candidateService{
 		repo: repo,
 	}
+	if len(deps) > 0 {
+		service.screeningTaskEnqueuer = deps[0].ScreeningTaskEnqueuer
+	}
+
+	return service
 }
 
 func (s *candidateService) Create(ctx context.Context, req dto.CreateCandidateRequest) (int64, error) {
@@ -223,16 +237,24 @@ func (s *candidateService) BatchAnalyze(ctx context.Context, req dto.BatchAnalyz
 	queued := 0
 	for _, candidateID := range candidateIDs {
 		result := s.repo.EnqueueScreening(ctx, candidateID, req.JobID, userID, CandidateStatusEvaluating)
-		if result.Status == "queued" {
-			queued++
+		if result.Status == ScreeningTaskStatusQueued {
+			if err := s.enqueueBatchScreeningTask(ctx, result); err != nil {
+				message := err.Error()
+				result.Status = ScreeningTaskStatusFailed
+				result.Message = &message
+			} else {
+				queued++
+			}
 		}
 		items = append(items, dto.BatchAnalyzeCandidateResult{
-			CandidateID:   result.CandidateID,
-			ResumeID:      result.ResumeID,
-			ApplicationID: result.ApplicationID,
-			ParseStatus:   result.ParseStatus,
-			Status:        result.Status,
-			Message:       result.Message,
+			CandidateID:       result.CandidateID,
+			ResumeID:          result.ResumeID,
+			ApplicationID:     result.ApplicationID,
+			ScreeningResultID: result.ScreeningResultID,
+			JobID:             result.JobID,
+			ParseStatus:       result.ParseStatus,
+			Status:            result.Status,
+			Message:           result.Message,
 		})
 	}
 
@@ -242,6 +264,21 @@ func (s *candidateService) BatchAnalyze(ctx context.Context, req dto.BatchAnalyz
 		Failed: len(candidateIDs) - queued,
 		Items:  items,
 	}, nil
+}
+
+func (s *candidateService) enqueueBatchScreeningTask(ctx context.Context, result repository.CandidateAnalysisResult) error {
+	if s.screeningTaskEnqueuer == nil {
+		return errors.New("筛选任务队列未启动")
+	}
+	if result.ScreeningResultID == nil || result.ResumeID == nil || result.JobID == nil {
+		return errors.New("筛选任务信息不完整")
+	}
+
+	return s.screeningTaskEnqueuer.EnqueueResumeScreening(ctx, ScreeningTaskQueueJob{
+		ScreeningResultID: *result.ScreeningResultID,
+		ResumeID:          *result.ResumeID,
+		JobID:             *result.JobID,
+	})
 }
 
 func (s *candidateService) Update(ctx context.Context, id int64, req dto.UpdateCandidateRequest) error {

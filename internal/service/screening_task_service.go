@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
@@ -14,6 +15,7 @@ import (
 )
 
 type ScreeningTaskService interface {
+	EnqueueResumeScreening(ctx context.Context, job ScreeningTaskQueueJob) error
 	RunResumeScreening(ctx context.Context, req dto.RunResumeScreeningRequest) (*dto.RunResumeScreeningResponse, error)
 	List(ctx context.Context, query dto.ScreeningTaskQuery) ([]dto.ScreeningTaskResponse, int64, error)
 }
@@ -22,6 +24,17 @@ type DifyResumeScreeningClient interface {
 	RunResumeScreening(ctx context.Context, req dify.RunResumeScreeningRequest) (*dify.RunResumeScreeningResponse, error)
 }
 
+const (
+	ScreeningTaskStatusQueued  = "queued"
+	ScreeningTaskStatusRunning = "running"
+	ScreeningTaskStatusSuccess = "success"
+	ScreeningTaskStatusFailed  = "failed"
+
+	defaultScreeningTaskQueueSize = 100
+	defaultScreeningWorkerCount   = 3
+	maxScreeningWorkerCount       = 10
+)
+
 type ScreeningTaskDependencies struct {
 	JobRepo         repository.JobRepository
 	ResumeRepo      repository.ResumeRepository
@@ -29,6 +42,22 @@ type ScreeningTaskDependencies struct {
 	Uploader        storage.Uploader
 	DifyClient      DifyResumeScreeningClient
 	DifyUser        string
+	QueueSize       int
+	WorkerCount     int
+}
+
+type ScreeningTaskQueueJob struct {
+	ScreeningResultID int64
+	ResumeID          int64
+	JobID             int64
+	OutputLanguage    string
+}
+
+type screeningTaskJob struct {
+	ScreeningResultID int64
+	ResumeID          int64
+	JobID             int64
+	OutputLanguage    string
 }
 
 type screeningTaskService struct {
@@ -39,6 +68,7 @@ type screeningTaskService struct {
 	uploader        storage.Uploader
 	difyClient      DifyResumeScreeningClient
 	difyUser        string
+	queue           chan screeningTaskJob
 }
 
 func NewScreeningTaskService(repo repository.ScreeningTaskRepository, deps ...ScreeningTaskDependencies) ScreeningTaskService {
@@ -50,9 +80,93 @@ func NewScreeningTaskService(repo repository.ScreeningTaskRepository, deps ...Sc
 		service.uploader = deps[0].Uploader
 		service.difyClient = deps[0].DifyClient
 		service.difyUser = deps[0].DifyUser
+
+		if service.screeningDependenciesConfigured() {
+			queueSize := deps[0].QueueSize
+			if queueSize <= 0 {
+				queueSize = defaultScreeningTaskQueueSize
+			}
+			service.queue = make(chan screeningTaskJob, queueSize)
+			service.startScreeningWorkers(normalizeScreeningWorkerCount(deps[0].WorkerCount))
+		}
 	}
 
 	return service
+}
+
+func normalizeScreeningWorkerCount(workerCount int) int {
+	if workerCount <= 0 {
+		return defaultScreeningWorkerCount
+	}
+	if workerCount > maxScreeningWorkerCount {
+		return maxScreeningWorkerCount
+	}
+
+	return workerCount
+}
+
+func (s *screeningTaskService) screeningDependenciesConfigured() bool {
+	return s.repo != nil &&
+		s.jobRepo != nil &&
+		s.resumeRepo != nil &&
+		s.applicationRepo != nil &&
+		s.uploader != nil &&
+		s.difyClient != nil
+}
+
+func (s *screeningTaskService) startScreeningWorkers(workerCount int) {
+	for i := 0; i < workerCount; i++ {
+		go s.runScreeningWorker(context.Background())
+	}
+}
+
+func (s *screeningTaskService) runScreeningWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job := <-s.queue:
+			if err := s.processQueuedResumeScreening(context.Background(), job); err != nil {
+				log.Printf("screening task %d failed: %v", job.ScreeningResultID, err)
+			}
+		}
+	}
+}
+
+func (s *screeningTaskService) enqueueScreeningJob(ctx context.Context, job screeningTaskJob) error {
+	if s.queue == nil {
+		return errors.New("筛选任务队列未启动")
+	}
+
+	select {
+	case s.queue <- job:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return errors.New("筛选任务队列已满")
+	}
+}
+
+func (s *screeningTaskService) EnqueueResumeScreening(ctx context.Context, job ScreeningTaskQueueJob) error {
+	if !s.screeningDependenciesConfigured() {
+		return s.markRunFailed(ctx, job.ScreeningResultID, "Dify 简历筛选未配置")
+	}
+	if job.ScreeningResultID <= 0 || job.ResumeID <= 0 || job.JobID <= 0 {
+		return s.markRunFailed(ctx, job.ScreeningResultID, "筛选任务信息不完整")
+	}
+
+	err := s.enqueueScreeningJob(ctx, screeningTaskJob{
+		ScreeningResultID: job.ScreeningResultID,
+		ResumeID:          job.ResumeID,
+		JobID:             job.JobID,
+		OutputLanguage:    job.OutputLanguage,
+	})
+	if err != nil {
+		_ = s.repo.MarkFailed(ctx, job.ScreeningResultID, err.Error())
+	}
+
+	return err
 }
 
 func (s *screeningTaskService) RunResumeScreening(ctx context.Context, req dto.RunResumeScreeningRequest) (*dto.RunResumeScreeningResponse, error) {
@@ -66,7 +180,7 @@ func (s *screeningTaskService) RunResumeScreening(ctx context.Context, req dto.R
 	if req.JobID <= 0 {
 		return nil, errors.New("岗位 ID 不合法")
 	}
-	if s.jobRepo == nil || s.resumeRepo == nil || s.applicationRepo == nil || s.uploader == nil || s.difyClient == nil {
+	if !s.screeningDependenciesConfigured() {
 		return nil, errors.New("Dify 简历筛选未配置")
 	}
 
@@ -79,17 +193,8 @@ func (s *screeningTaskService) RunResumeScreening(ctx context.Context, req dto.R
 		return nil, errors.New("简历文件 key 不能为空")
 	}
 
-	job, err := s.jobRepo.FindByID(ctx, req.JobID)
-	if err != nil {
+	if _, err := s.jobRepo.FindByID(ctx, req.JobID); err != nil {
 		return nil, errors.New("岗位不存在")
-	}
-	tags, err := s.jobRepo.ListTags(ctx, req.JobID)
-	if err != nil {
-		return nil, err
-	}
-	jobContext, err := buildJobScreeningContextResponse(job, tags)
-	if err != nil {
-		return nil, err
 	}
 
 	application, err := s.applicationRepo.FindOrCreateForScreening(ctx, req.JobID, req.ResumeID, resume.CandidateID, userID)
@@ -99,19 +204,64 @@ func (s *screeningTaskService) RunResumeScreening(ctx context.Context, req dto.R
 
 	screeningResult := &model.ScreeningResult{
 		ApplicationID: application.ID,
-		Status:        "pending",
+		Status:        ScreeningTaskStatusQueued,
 		CreatedBy:     &userID,
 	}
 	if err := s.repo.Create(ctx, screeningResult); err != nil {
 		return nil, err
 	}
 
+	if err := s.EnqueueResumeScreening(ctx, ScreeningTaskQueueJob{
+		ScreeningResultID: screeningResult.ID,
+		ResumeID:          req.ResumeID,
+		JobID:             req.JobID,
+		OutputLanguage:    req.OutputLanguage,
+	}); err != nil {
+		return nil, err
+	}
+
+	return &dto.RunResumeScreeningResponse{
+		ScreeningResultID: screeningResult.ID,
+		ApplicationID:     application.ID,
+		ResumeID:          req.ResumeID,
+		JobID:             req.JobID,
+		Status:            ScreeningTaskStatusQueued,
+	}, nil
+}
+
+func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context, screeningJob screeningTaskJob) error {
+	if err := s.repo.MarkRunning(ctx, screeningJob.ScreeningResultID); err != nil {
+		return err
+	}
+
+	resume, err := s.resumeRepo.FindByID(ctx, screeningJob.ResumeID)
+	if err != nil {
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "简历不存在")
+	}
+	objectKey := resumeObjectKey(resume)
+	if objectKey == "" {
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "简历文件 key 不能为空")
+	}
+
+	job, err := s.jobRepo.FindByID(ctx, screeningJob.JobID)
+	if err != nil {
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "岗位不存在")
+	}
+	tags, err := s.jobRepo.ListTags(ctx, screeningJob.JobID)
+	if err != nil {
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "读取岗位标签失败: "+err.Error())
+	}
+	jobContext, err := buildJobScreeningContextResponse(job, tags)
+	if err != nil {
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "生成岗位筛选上下文失败: "+err.Error())
+	}
+
 	object, err := s.uploader.Open(ctx, objectKey)
 	if err != nil {
-		return nil, s.markRunFailed(ctx, screeningResult.ID, "打开简历文件失败: "+err.Error())
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "打开简历文件失败: "+err.Error())
 	}
 	if object == nil || object.Body == nil {
-		return nil, s.markRunFailed(ctx, screeningResult.ID, "简历文件内容为空")
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "简历文件内容为空")
 	}
 	defer object.Body.Close()
 
@@ -120,25 +270,25 @@ func (s *screeningTaskService) RunResumeScreening(ctx context.Context, req dto.R
 		Filename:       stringValue(resume.OriginalFilename, "resume"),
 		ContentType:    firstNonEmpty(stringValue(resume.FileType, ""), object.ContentType, "application/octet-stream"),
 		JobContext:     jobContext.JobContext,
-		OutputLanguage: firstNonEmpty(strings.TrimSpace(req.OutputLanguage), "Chinese"),
+		OutputLanguage: firstNonEmpty(strings.TrimSpace(screeningJob.OutputLanguage), "Chinese"),
 		User:           firstNonEmpty(s.difyUser, "resume_back"),
 	})
 	if err != nil {
-		return nil, s.markRunFailed(ctx, screeningResult.ID, "Dify 简历筛选失败: "+err.Error())
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "Dify 简历筛选失败: "+err.Error())
 	}
 
 	aiOutput, err := parseScreeningAIOutput(difyResult.ResultText)
 	if err != nil {
-		return nil, s.markRunFailed(ctx, screeningResult.ID, "解析 Dify 返回结果失败: "+err.Error())
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "解析 Dify 返回结果失败: "+err.Error())
 	}
 
 	rawResponse, err := buildScreeningRawResponse(difyResult, aiOutput)
 	if err != nil {
-		return nil, s.markRunFailed(ctx, screeningResult.ID, "保存 Dify 返回结果失败: "+err.Error())
+		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "保存 Dify 返回结果失败: "+err.Error())
 	}
 
 	score := aiOutput.Score
-	if err := s.repo.MarkSuccess(ctx, screeningResult.ID, repository.ScreeningResultSuccessUpdate{
+	if err := s.repo.MarkSuccess(ctx, screeningJob.ScreeningResultID, repository.ScreeningResultSuccessUpdate{
 		Score:               &score,
 		MatchLevel:          trimOptionalString(aiOutput.MatchLevel),
 		Recommendation:      trimOptionalString(aiOutput.Recommendation),
@@ -151,21 +301,10 @@ func (s *screeningTaskService) RunResumeScreening(ctx context.Context, req dto.R
 		PromptVersion:       stringPtrValue("dify_resume_screening_v1"),
 		RawResponse:         &rawResponse,
 	}); err != nil {
-		return nil, err
+		return err
 	}
 
-	return &dto.RunResumeScreeningResponse{
-		ScreeningResultID: screeningResult.ID,
-		ApplicationID:     application.ID,
-		ResumeID:          req.ResumeID,
-		JobID:             req.JobID,
-		Score:             &score,
-		MatchLevel:        trimOptionalString(aiOutput.MatchLevel),
-		Recommendation:    trimOptionalString(aiOutput.Recommendation),
-		Summary:           trimOptionalString(aiOutput.Summary),
-		MarkdownReport:    trimOptionalString(aiOutput.MarkdownReport),
-		Status:            "success",
-	}, nil
+	return nil
 }
 
 func (s *screeningTaskService) List(ctx context.Context, query dto.ScreeningTaskQuery) ([]dto.ScreeningTaskResponse, int64, error) {

@@ -97,12 +97,14 @@ type BatchAnalyzeCandidatesRequest struct {
 }
 
 type BatchAnalyzeCandidateResult struct {
-	CandidateID   int64   `json:"candidateId"`
-	ResumeID      *int64  `json:"resumeId"`
-	ApplicationID *int64  `json:"applicationId"`
-	ParseStatus   *string `json:"parseStatus,omitempty"`
-	Status        string  `json:"status"`
-	Message       *string `json:"message,omitempty"`
+	CandidateID       int64   `json:"candidateId"`
+	ResumeID          *int64  `json:"resumeId"`
+	ApplicationID     *int64  `json:"applicationId"`
+	ScreeningResultID *int64  `json:"screeningResultId,omitempty"`
+	JobID             *int64  `json:"jobId,omitempty"`
+	ParseStatus       *string `json:"parseStatus,omitempty"`
+	Status            string  `json:"status"`
+	Message           *string `json:"message,omitempty"`
 }
 
 type BatchAnalyzeCandidatesResponse struct {

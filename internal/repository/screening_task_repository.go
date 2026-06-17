@@ -51,6 +51,7 @@ type ScreeningResultSuccessUpdate struct {
 
 type ScreeningTaskRepository interface {
 	Create(ctx context.Context, result *model.ScreeningResult) error
+	MarkRunning(ctx context.Context, id int64) error
 	MarkSuccess(ctx context.Context, id int64, update ScreeningResultSuccessUpdate) error
 	MarkFailed(ctx context.Context, id int64, message string) error
 	List(ctx context.Context, filter ScreeningTaskListFilter) ([]ScreeningTaskListItem, int64, error)
@@ -66,6 +67,16 @@ func NewScreeningTaskRepository(db *gorm.DB) ScreeningTaskRepository {
 
 func (r *screeningTaskRepository) Create(ctx context.Context, result *model.ScreeningResult) error {
 	return r.db.WithContext(ctx).Create(result).Error
+}
+
+func (r *screeningTaskRepository) MarkRunning(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).
+		Model(&model.ScreeningResult{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"status":        "running",
+			"error_message": nil,
+		}).Error
 }
 
 func (r *screeningTaskRepository) MarkSuccess(ctx context.Context, id int64, update ScreeningResultSuccessUpdate) error {

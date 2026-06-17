@@ -62,12 +62,14 @@ type CandidateJobSelection struct {
 }
 
 type CandidateAnalysisResult struct {
-	CandidateID   int64
-	ResumeID      *int64
-	ApplicationID *int64
-	ParseStatus   *string
-	Status        string
-	Message       *string
+	CandidateID       int64
+	ResumeID          *int64
+	ApplicationID     *int64
+	ScreeningResultID *int64
+	JobID             *int64
+	ParseStatus       *string
+	Status            string
+	Message           *string
 }
 
 type CandidateRepository interface {
@@ -206,16 +208,17 @@ func (r *candidateRepository) EnqueueScreening(ctx context.Context, candidateID 
 			}
 		}
 		result.ApplicationID = &application.ID
+		result.JobID = &application.JobID
 
-		screeningStatus := "pending"
 		screeningResult := &model.ScreeningResult{
 			ApplicationID: application.ID,
-			Status:        screeningStatus,
+			Status:        "queued",
 			CreatedBy:     &createdBy,
 		}
 		if err := tx.Create(screeningResult).Error; err != nil {
 			return err
 		}
+		result.ScreeningResultID = &screeningResult.ID
 
 		if err := tx.Model(&model.Candidate{}).
 			Where("id = ?", candidateID).
