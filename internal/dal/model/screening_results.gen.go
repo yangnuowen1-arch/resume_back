@@ -22,14 +22,19 @@ type ScreeningResult struct {
 	Weaknesses          *string   `gorm:"column:weaknesses;type:text" json:"weaknesses"`
 	Risks               *string   `gorm:"column:risks;type:text" json:"risks"`
 	MissingRequirements *string   `gorm:"column:missing_requirements;type:text" json:"missing_requirements"`
+	Requirements        *string   `gorm:"column:requirements;type:jsonb" json:"requirements"`
 	AiProvider          *string   `gorm:"column:ai_provider;type:character varying(50)" json:"ai_provider"`
 	AiModel             *string   `gorm:"column:ai_model;type:character varying(100)" json:"ai_model"`
 	PromptVersion       *string   `gorm:"column:prompt_version;type:character varying(50)" json:"prompt_version"`
 	RawResponse         *string   `gorm:"column:raw_response;type:jsonb" json:"raw_response"`
 	Status              string    `gorm:"column:status;type:character varying(30);not null;default:success" json:"status"`
-	ErrorMessage        *string   `gorm:"column:error_message;type:text" json:"error_message"`
-	CreatedBy           *int64    `gorm:"column:created_by;type:bigint" json:"created_by"`
-	CreatedAt           time.Time `gorm:"column:created_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+	ErrorMessage        *string    `gorm:"column:error_message;type:text" json:"error_message"`
+	StartedAt           *time.Time `gorm:"column:started_at;type:timestamp without time zone" json:"started_at"`
+	FinishedAt          *time.Time `gorm:"column:finished_at;type:timestamp without time zone" json:"finished_at"`
+	RetryCount          int32      `gorm:"column:retry_count;type:integer;not null;default:0" json:"retry_count"`
+	LastErrorAt         *time.Time `gorm:"column:last_error_at;type:timestamp without time zone" json:"last_error_at"`
+	CreatedBy           *int64     `gorm:"column:created_by;type:bigint" json:"created_by"`
+	CreatedAt           time.Time  `gorm:"column:created_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 
 // TableName ScreeningResult's table name

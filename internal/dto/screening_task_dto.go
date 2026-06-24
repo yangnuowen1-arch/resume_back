@@ -48,3 +48,30 @@ type ScreeningTaskResponse struct {
 	Recommendation *string   `json:"recommendation,omitempty"`
 	ErrorMessage   *string   `json:"errorMessage,omitempty"`
 }
+
+type RequirementEvidence struct {
+	Text  string `json:"text"`
+	Start *int   `json:"start"`
+	End   *int   `json:"end"`
+}
+
+type ScreeningRequirement struct {
+	ID       string                `json:"id"`
+	Label    string                `json:"label"`
+	Status   string                `json:"status"`
+	Comment  *string               `json:"comment"`
+	Evidence []RequirementEvidence `json:"evidence"`
+}
+
+type ScreeningTaskDetailResponse struct {
+	ID             int64                  `json:"id"`
+	CandidateName  *string                `json:"candidateName"`
+	Position       string                 `json:"position"`
+	AIScore        *float64               `json:"aiScore"`
+	MatchLevel     *string                `json:"matchLevel"`
+	Recommendation *string                `json:"recommendation"`
+	Summary        *string                `json:"summary"`
+	MarkdownReport *string                `json:"markdownReport,omitempty"`
+	ResumeText     *string                `json:"resumeText"`
+	Requirements   []ScreeningRequirement `json:"requirements"`
+}

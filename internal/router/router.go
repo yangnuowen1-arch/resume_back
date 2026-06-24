@@ -160,6 +160,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		private.GET("/candidate-statuses", candidateHandler.ListStatuses)
 		private.POST("/screening-tasks/run", screeningTaskHandler.RunResumeScreening)
 		private.GET("/screening-tasks", screeningTaskHandler.List)
+		private.GET("/screening-tasks/:id", screeningTaskHandler.Detail)
 
 		private.GET("/resumes", resumeHandler.List)
 		private.POST("/resumes/upload", resumeHandler.Upload)

@@ -19,6 +19,10 @@ type ScreeningTaskListItem struct {
 	AIScore        *float64
 	Status         string
 	CreatedAt      time.Time
+	StartedAt      *time.Time
+	FinishedAt     *time.Time
+	RetryCount     int
+	LastErrorAt    *time.Time
 	CreatedBy      *int64
 	MatchLevel     *string
 	Recommendation *string
@@ -34,6 +38,19 @@ type ScreeningTaskListFilter struct {
 	PageSize    int
 }
 
+type ScreeningTaskDetailItem struct {
+	ID             int64
+	CandidateName  *string
+	Position       string
+	AIScore        *float64
+	MatchLevel     *string
+	Recommendation *string
+	Summary        *string
+	RawResponse    *string
+	Requirements   *string
+	ResumeText     *string
+}
+
 type ScreeningResultSuccessUpdate struct {
 	Score               *float64
 	MatchLevel          *string
@@ -43,10 +60,12 @@ type ScreeningResultSuccessUpdate struct {
 	Weaknesses          *string
 	Risks               *string
 	MissingRequirements *string
+	Requirements        *string
 	AIProvider          *string
 	AIModel             *string
 	PromptVersion       *string
 	RawResponse         *string
+	RetryCount          int
 }
 
 type ScreeningTaskRepository interface {
@@ -55,6 +74,7 @@ type ScreeningTaskRepository interface {
 	MarkSuccess(ctx context.Context, id int64, update ScreeningResultSuccessUpdate) error
 	MarkFailed(ctx context.Context, id int64, message string) error
 	List(ctx context.Context, filter ScreeningTaskListFilter) ([]ScreeningTaskListItem, int64, error)
+	FindDetailByID(ctx context.Context, id int64) (*ScreeningTaskDetailItem, error)
 }
 
 type screeningTaskRepository struct {
@@ -92,6 +112,7 @@ func (r *screeningTaskRepository) MarkSuccess(ctx context.Context, id int64, upd
 			"weaknesses":           update.Weaknesses,
 			"risks":                update.Risks,
 			"missing_requirements": update.MissingRequirements,
+			"requirements":         update.Requirements,
 			"ai_provider":          update.AIProvider,
 			"ai_model":             update.AIModel,
 			"prompt_version":       update.PromptVersion,
@@ -132,6 +153,37 @@ func (r *screeningTaskRepository) List(ctx context.Context, filter ScreeningTask
 
 	return items, total, nil
 }
+
+func (r *screeningTaskRepository) FindDetailByID(ctx context.Context, id int64) (*ScreeningTaskDetailItem, error) {
+	item := &ScreeningTaskDetailItem{}
+	err := r.db.WithContext(ctx).
+		Table(model.TableNameScreeningResult).
+		Joins("JOIN "+model.TableNameApplication+" ON applications.id = screening_results.application_id").
+		Joins("JOIN "+model.TableNameJob+" ON jobs.id = applications.job_id").
+		Joins("LEFT JOIN "+model.TableNameCandidate+" ON candidates.id = applications.candidate_id").
+		Joins("LEFT JOIN "+model.TableNameResume+" ON resumes.id = applications.resume_id").
+		Select(screeningTaskDetailSelectColumns).
+		Where("screening_results.id = ?", id).
+		Take(item).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return item, nil
+}
+
+const screeningTaskDetailSelectColumns = `
+	screening_results.id,
+	candidates.name AS candidate_name,
+	jobs.title AS position,
+	screening_results.score AS ai_score,
+	screening_results.match_level,
+	screening_results.recommendation,
+	screening_results.summary,
+	screening_results.raw_response,
+	screening_results.requirements,
+	resumes.raw_text AS resume_text
+`
 
 func (r *screeningTaskRepository) buildScreeningTaskListBaseQuery(ctx context.Context, filter ScreeningTaskListFilter) *gorm.DB {
 	queryBuilder := r.db.WithContext(ctx).

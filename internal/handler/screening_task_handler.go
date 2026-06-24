@@ -110,3 +110,37 @@ func (h *ScreeningTaskHandler) List(c *gin.Context) {
 		},
 	})
 }
+
+// Detail 查询简历筛选任务详情
+// @Summary 查询简历筛选任务详情
+// @Description 返回单个 screening_result 的基础信息、简历原文 resumeText 以及结构化的岗位要求比对 requirements，供前端左右分栏高亮可视化
+// @Tags 筛选任务
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "筛选任务 ID"
+// @Success 200 {object} response.APIResponse
+// @Failure 400 {object} response.APIResponse
+// @Failure 401 {object} response.APIResponse
+// @Failure 404 {object} response.APIResponse
+// @Failure 500 {object} response.APIResponse
+// @Router /screening-tasks/{id} [get]
+func (h *ScreeningTaskHandler) Detail(c *gin.Context) {
+	id, ok := parseInt64Param(c, "id")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, 40001, "id 参数不合法", nil)
+		return
+	}
+
+	detail, err := h.service.Detail(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, service.ErrScreeningTaskNotFound) {
+			response.Error(c, http.StatusNotFound, 40401, "筛选任务不存在", nil)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, 50001, "查询筛选任务详情失败", err.Error())
+		return
+	}
+
+	response.Success(c, detail)
+}

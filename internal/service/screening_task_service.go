@@ -5,19 +5,23 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
 	"github.com/yangnuowen1-arch/resume_back/internal/dify"
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
 	"github.com/yangnuowen1-arch/resume_back/internal/storage"
+	"gorm.io/gorm"
 )
 
 type ScreeningTaskService interface {
 	EnqueueResumeScreening(ctx context.Context, job ScreeningTaskQueueJob) error
 	RunResumeScreening(ctx context.Context, req dto.RunResumeScreeningRequest) (*dto.RunResumeScreeningResponse, error)
 	List(ctx context.Context, query dto.ScreeningTaskQuery) ([]dto.ScreeningTaskResponse, int64, error)
+	Detail(ctx context.Context, id int64) (*dto.ScreeningTaskDetailResponse, error)
 }
 
 type DifyResumeScreeningClient interface {
@@ -126,9 +130,18 @@ func (s *screeningTaskService) runScreeningWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case job := <-s.queue:
+			start := time.Now()
+			log.Printf("screening task started screeningResultId=%d resumeId=%d jobId=%d outputLanguage=%s",
+				job.ScreeningResultID, job.ResumeID, job.JobID, job.OutputLanguage)
+
 			if err := s.processQueuedResumeScreening(context.Background(), job); err != nil {
-				log.Printf("screening task %d failed: %v", job.ScreeningResultID, err)
+				log.Printf("screening task failed screeningResultId=%d resumeId=%d jobId=%d duration=%s error=%v",
+					job.ScreeningResultID, job.ResumeID, job.JobID, time.Since(start), err)
+				continue
 			}
+
+			log.Printf("screening task succeeded screeningResultId=%d resumeId=%d jobId=%d duration=%s",
+				job.ScreeningResultID, job.ResumeID, job.JobID, time.Since(start))
 		}
 	}
 }
@@ -163,10 +176,15 @@ func (s *screeningTaskService) EnqueueResumeScreening(ctx context.Context, job S
 		OutputLanguage:    job.OutputLanguage,
 	})
 	if err != nil {
+		log.Printf("screening task enqueue failed screeningResultId=%d resumeId=%d jobId=%d error=%v",
+			job.ScreeningResultID, job.ResumeID, job.JobID, err)
 		_ = s.repo.MarkFailed(ctx, job.ScreeningResultID, err.Error())
+		return err
 	}
 
-	return err
+	log.Printf("screening task enqueued screeningResultId=%d resumeId=%d jobId=%d outputLanguage=%s",
+		job.ScreeningResultID, job.ResumeID, job.JobID, job.OutputLanguage)
+	return nil
 }
 
 func (s *screeningTaskService) RunResumeScreening(ctx context.Context, req dto.RunResumeScreeningRequest) (*dto.RunResumeScreeningResponse, error) {
@@ -233,6 +251,8 @@ func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context,
 	if err := s.repo.MarkRunning(ctx, screeningJob.ScreeningResultID); err != nil {
 		return err
 	}
+	log.Printf("screening task marked running screeningResultId=%d resumeId=%d jobId=%d",
+		screeningJob.ScreeningResultID, screeningJob.ResumeID, screeningJob.JobID)
 
 	resume, err := s.resumeRepo.FindByID(ctx, screeningJob.ResumeID)
 	if err != nil {
@@ -242,6 +262,8 @@ func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context,
 	if objectKey == "" {
 		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "简历文件 key 不能为空")
 	}
+	log.Printf("screening task resume loaded screeningResultId=%d resumeId=%d objectKey=%s",
+		screeningJob.ScreeningResultID, screeningJob.ResumeID, objectKey)
 
 	job, err := s.jobRepo.FindByID(ctx, screeningJob.JobID)
 	if err != nil {
@@ -255,6 +277,8 @@ func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context,
 	if err != nil {
 		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "生成岗位筛选上下文失败: "+err.Error())
 	}
+	log.Printf("screening task job context built screeningResultId=%d jobId=%d tagCount=%d",
+		screeningJob.ScreeningResultID, screeningJob.JobID, len(tags))
 
 	object, err := s.uploader.Open(ctx, objectKey)
 	if err != nil {
@@ -264,7 +288,12 @@ func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context,
 		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "简历文件内容为空")
 	}
 	defer object.Body.Close()
+	log.Printf("screening task resume file opened screeningResultId=%d resumeId=%d contentType=%s",
+		screeningJob.ScreeningResultID, screeningJob.ResumeID, object.ContentType)
 
+	difyStart := time.Now()
+	log.Printf("screening task dify screening started screeningResultId=%d resumeId=%d jobId=%d",
+		screeningJob.ScreeningResultID, screeningJob.ResumeID, screeningJob.JobID)
 	difyResult, err := s.difyClient.RunResumeScreening(ctx, dify.RunResumeScreeningRequest{
 		File:           object.Body,
 		Filename:       stringValue(resume.OriginalFilename, "resume"),
@@ -274,13 +303,19 @@ func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context,
 		User:           firstNonEmpty(s.difyUser, "resume_back"),
 	})
 	if err != nil {
+		log.Printf("screening task dify screening failed screeningResultId=%d duration=%s error=%v",
+			screeningJob.ScreeningResultID, time.Since(difyStart), err)
 		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "Dify 简历筛选失败: "+err.Error())
 	}
+	log.Printf("screening task dify screening succeeded screeningResultId=%d workflowRunId=%s taskId=%s duration=%s",
+		screeningJob.ScreeningResultID, difyResult.WorkflowRunID, difyResult.TaskID, time.Since(difyStart))
 
 	aiOutput, err := parseScreeningAIOutput(difyResult.ResultText)
 	if err != nil {
 		return s.markRunFailed(ctx, screeningJob.ScreeningResultID, "解析 Dify 返回结果失败: "+err.Error())
 	}
+	log.Printf("screening task dify output parsed screeningResultId=%d score=%.2f",
+		screeningJob.ScreeningResultID, aiOutput.Score)
 
 	rawResponse, err := buildScreeningRawResponse(difyResult, aiOutput)
 	if err != nil {
@@ -297,12 +332,15 @@ func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context,
 		Weaknesses:          jsonStringPtr(aiOutput.Weaknesses),
 		Risks:               jsonStringPtr(aiOutput.Risks),
 		MissingRequirements: jsonStringPtr(aiOutput.MissingRequirements),
+		Requirements:        buildRequirementsJSON(aiOutput.Requirements, stringValue(resume.RawText, "")),
 		AIProvider:          stringPtrValue("dify"),
 		PromptVersion:       stringPtrValue("dify_resume_screening_v1"),
 		RawResponse:         &rawResponse,
 	}); err != nil {
 		return err
 	}
+	log.Printf("screening task result saved screeningResultId=%d score=%.2f",
+		screeningJob.ScreeningResultID, score)
 
 	return nil
 }
@@ -330,6 +368,70 @@ func (s *screeningTaskService) List(ctx context.Context, query dto.ScreeningTask
 	return result, total, nil
 }
 
+func (s *screeningTaskService) Detail(ctx context.Context, id int64) (*dto.ScreeningTaskDetailResponse, error) {
+	if id <= 0 {
+		return nil, ErrScreeningTaskNotFound
+	}
+
+	item, err := s.repo.FindDetailByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrScreeningTaskNotFound
+		}
+		return nil, err
+	}
+
+	detail := &dto.ScreeningTaskDetailResponse{
+		ID:             item.ID,
+		CandidateName:  item.CandidateName,
+		Position:       item.Position,
+		AIScore:        item.AIScore,
+		MatchLevel:     item.MatchLevel,
+		Recommendation: item.Recommendation,
+		Summary:        item.Summary,
+		MarkdownReport: extractMarkdownReport(item.RawResponse),
+		ResumeText:     item.ResumeText,
+		Requirements:   parseStoredRequirements(item.Requirements),
+	}
+
+	return detail, nil
+}
+
+// extractMarkdownReport 从 raw_response JSON 的 output.markdown_report 取出报告文本。
+func extractMarkdownReport(rawResponse *string) *string {
+	if rawResponse == nil || strings.TrimSpace(*rawResponse) == "" {
+		return nil
+	}
+
+	var payload struct {
+		Output struct {
+			MarkdownReport *string `json:"markdown_report"`
+		} `json:"output"`
+	}
+	if err := json.Unmarshal([]byte(*rawResponse), &payload); err != nil {
+		return nil
+	}
+
+	return trimOptionalString(payload.Output.MarkdownReport)
+}
+
+// parseStoredRequirements 反序列化已落库的 requirements JSON，缺失时返回空数组（前端走降级态）。
+func parseStoredRequirements(stored *string) []dto.ScreeningRequirement {
+	if stored == nil || strings.TrimSpace(*stored) == "" {
+		return []dto.ScreeningRequirement{}
+	}
+
+	var requirements []dto.ScreeningRequirement
+	if err := json.Unmarshal([]byte(*stored), &requirements); err != nil {
+		return []dto.ScreeningRequirement{}
+	}
+	if requirements == nil {
+		return []dto.ScreeningRequirement{}
+	}
+
+	return requirements
+}
+
 func normalizeScreeningTaskQuery(query dto.ScreeningTaskQuery) dto.ScreeningTaskQuery {
 	if query.Page < 1 {
 		query.Page = 1
@@ -342,7 +444,9 @@ func normalizeScreeningTaskQuery(query dto.ScreeningTaskQuery) dto.ScreeningTask
 }
 
 func (s *screeningTaskService) markRunFailed(ctx context.Context, id int64, message string) error {
-	_ = s.repo.MarkFailed(ctx, id, message)
+	if err := s.repo.MarkFailed(ctx, id, message); err != nil {
+		log.Printf("screening task mark failed error screeningResultId=%d error=%v originalError=%s", id, err, message)
+	}
 	return errors.New(message)
 }
 
@@ -357,11 +461,26 @@ type screeningAIOutput struct {
 	Summary                     *string       `json:"summary"`
 	MatchedRequirements         []interface{} `json:"matched_requirements"`
 	MissingRequirements         []interface{} `json:"missing_requirements"`
+	Requirements                []aiRequirement `json:"requirements"`
 	Strengths                   []string      `json:"strengths"`
 	Weaknesses                  []string      `json:"weaknesses"`
 	Risks                       []string      `json:"risks"`
 	SuggestedInterviewQuestions []string      `json:"suggested_interview_questions"`
 	MarkdownReport              *string       `json:"markdown_report"`
+}
+
+type aiRequirement struct {
+	ID       interface{}     `json:"id"`
+	Label    string          `json:"label"`
+	Status   string          `json:"status"`
+	Comment  *string         `json:"comment"`
+	Evidence []aiEvidence    `json:"evidence"`
+}
+
+type aiEvidence struct {
+	Text  string `json:"text"`
+	Start *int   `json:"start"`
+	End   *int   `json:"end"`
 }
 
 func parseScreeningAIOutput(text string) (screeningAIOutput, error) {
@@ -418,6 +537,91 @@ func jsonStringPtr(value interface{}) *string {
 	}
 	text := string(encoded)
 	return &text
+}
+
+func normalizeRequirementStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "pass":
+		return "pass"
+	case "partial":
+		return "partial"
+	default:
+		return "miss"
+	}
+}
+
+// buildRequirementsJSON 将 Dify 输出的 requirements 归一化为前端 DTO 结构，
+// 并基于简历原文用 strings.Index 计算 evidence 的 start/end，保证下标准确。
+// 没有 requirements 时返回 nil（列保持空，前端走降级态）。
+func buildRequirementsJSON(items []aiRequirement, resumeText string) *string {
+	if len(items) == 0 {
+		return nil
+	}
+
+	requirements := make([]dto.ScreeningRequirement, 0, len(items))
+	for i, item := range items {
+		label := strings.TrimSpace(item.Label)
+		if label == "" {
+			continue
+		}
+
+		evidence := make([]dto.RequirementEvidence, 0, len(item.Evidence))
+		searchFrom := 0
+		for _, ev := range item.Evidence {
+			text := ev.Text
+			if strings.TrimSpace(text) == "" {
+				continue
+			}
+
+			start, end := ev.Start, ev.End
+			if resumeText != "" {
+				if idx := strings.Index(resumeText[min(searchFrom, len(resumeText)):], text); idx >= 0 {
+					absStart := min(searchFrom, len(resumeText)) + idx
+					absEnd := absStart + len(text)
+					start, end = &absStart, &absEnd
+					searchFrom = absEnd
+				} else if idx := strings.Index(resumeText, text); idx >= 0 {
+					absStart := idx
+					absEnd := absStart + len(text)
+					start, end = &absStart, &absEnd
+				} else {
+					start, end = nil, nil
+				}
+			}
+
+			evidence = append(evidence, dto.RequirementEvidence{Text: text, Start: start, End: end})
+		}
+
+		requirements = append(requirements, dto.ScreeningRequirement{
+			ID:       requirementID(item.ID, i),
+			Label:    label,
+			Status:   normalizeRequirementStatus(item.Status),
+			Comment:  trimOptionalString(item.Comment),
+			Evidence: evidence,
+		})
+	}
+
+	if len(requirements) == 0 {
+		return nil
+	}
+
+	return jsonStringPtr(requirements)
+}
+
+func requirementID(raw interface{}, index int) string {
+	switch v := raw.(type) {
+	case string:
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	case float64:
+		return strconv.FormatInt(int64(v), 10)
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	}
+	return "r" + strconv.Itoa(index+1)
 }
 
 func stringPtrValue(value string) *string {
