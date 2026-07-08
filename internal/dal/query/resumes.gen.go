@@ -44,6 +44,7 @@ func newResume(db *gorm.DB, opts ...gen.DOOption) resume {
 	_resume.UploadedAt = field.NewTime(tableName, "uploaded_at")
 	_resume.CreatedAt = field.NewTime(tableName, "created_at")
 	_resume.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_resume.FileHash = field.NewString(tableName, "file_hash")
 
 	_resume.fillFieldMap()
 
@@ -71,6 +72,7 @@ type resume struct {
 	UploadedAt       field.Time
 	CreatedAt        field.Time
 	UpdatedAt        field.Time
+	FileHash         field.String
 
 	fieldMap map[string]field.Expr
 }
@@ -104,6 +106,7 @@ func (r *resume) updateTableName(table string) *resume {
 	r.UploadedAt = field.NewTime(table, "uploaded_at")
 	r.CreatedAt = field.NewTime(table, "created_at")
 	r.UpdatedAt = field.NewTime(table, "updated_at")
+	r.FileHash = field.NewString(table, "file_hash")
 
 	r.fillFieldMap()
 
@@ -128,7 +131,7 @@ func (r *resume) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (r *resume) fillFieldMap() {
-	r.fieldMap = make(map[string]field.Expr, 17)
+	r.fieldMap = make(map[string]field.Expr, 18)
 	r.fieldMap["id"] = r.ID
 	r.fieldMap["candidate_id"] = r.CandidateID
 	r.fieldMap["original_filename"] = r.OriginalFilename
@@ -146,6 +149,7 @@ func (r *resume) fillFieldMap() {
 	r.fieldMap["uploaded_at"] = r.UploadedAt
 	r.fieldMap["created_at"] = r.CreatedAt
 	r.fieldMap["updated_at"] = r.UpdatedAt
+	r.fieldMap["file_hash"] = r.FileHash
 }
 
 func (r resume) clone(db *gorm.DB) resume {

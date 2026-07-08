@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -80,6 +81,7 @@ type CandidateRepository interface {
 	Update(ctx context.Context, candidate *model.Candidate) error
 	UpdateWithResume(ctx context.Context, candidate *model.Candidate, resume *model.Resume) error
 	FindByID(ctx context.Context, id int64) (*model.Candidate, error)
+	FindByEmail(ctx context.Context, email string) (*model.Candidate, error)
 	List(ctx context.Context, filter CandidateListFilter) ([]CandidateListItem, int64, error)
 	ActivePositionCategoryExists(ctx context.Context, id int64) (bool, error)
 	FindJobSelectionByID(ctx context.Context, id int64) (CandidateJobSelection, error)
@@ -298,6 +300,28 @@ func (r *candidateRepository) FindByID(ctx context.Context, id int64) (*model.Ca
 	err := r.db.WithContext(ctx).
 		Where("id = ?", id).
 		First(candidate).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return candidate, nil
+}
+
+// FindByEmail 按邮箱查候选人（大小写不敏感，对齐 uq_candidates_email_lower 唯一索引）。
+// 用于邮箱导入时按发件人合并候选人：未命中返回 (nil, nil)，便于调用方区分「新建」与「出错」。
+func (r *candidateRepository) FindByEmail(ctx context.Context, email string) (*model.Candidate, error) {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, nil
+	}
+
+	candidate := &model.Candidate{}
+	err := r.db.WithContext(ctx).
+		Where("lower(email) = lower(?)", email).
+		First(candidate).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

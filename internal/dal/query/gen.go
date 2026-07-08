@@ -24,6 +24,9 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		JobCategory:     newJobCategory(db, opts...),
 		JobMember:       newJobMember(db, opts...),
 		JobTag:          newJobTag(db, opts...),
+		MailboxAccount:  newMailboxAccount(db, opts...),
+		MailboxMessage:  newMailboxMessage(db, opts...),
+		MailboxScanTask: newMailboxScanTask(db, opts...),
 		OperationLog:    newOperationLog(db, opts...),
 		Resume:          newResume(db, opts...),
 		Role:            newRole(db, opts...),
@@ -44,6 +47,9 @@ type Query struct {
 	JobCategory     jobCategory
 	JobMember       jobMember
 	JobTag          jobTag
+	MailboxAccount  mailboxAccount
+	MailboxMessage  mailboxMessage
+	MailboxScanTask mailboxScanTask
 	OperationLog    operationLog
 	Resume          resume
 	Role            role
@@ -65,6 +71,9 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		JobCategory:     q.JobCategory.clone(db),
 		JobMember:       q.JobMember.clone(db),
 		JobTag:          q.JobTag.clone(db),
+		MailboxAccount:  q.MailboxAccount.clone(db),
+		MailboxMessage:  q.MailboxMessage.clone(db),
+		MailboxScanTask: q.MailboxScanTask.clone(db),
 		OperationLog:    q.OperationLog.clone(db),
 		Resume:          q.Resume.clone(db),
 		Role:            q.Role.clone(db),
@@ -93,6 +102,9 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		JobCategory:     q.JobCategory.replaceDB(db),
 		JobMember:       q.JobMember.replaceDB(db),
 		JobTag:          q.JobTag.replaceDB(db),
+		MailboxAccount:  q.MailboxAccount.replaceDB(db),
+		MailboxMessage:  q.MailboxMessage.replaceDB(db),
+		MailboxScanTask: q.MailboxScanTask.replaceDB(db),
 		OperationLog:    q.OperationLog.replaceDB(db),
 		Resume:          q.Resume.replaceDB(db),
 		Role:            q.Role.replaceDB(db),
@@ -111,6 +123,9 @@ type queryCtx struct {
 	JobCategory     *jobCategoryDo
 	JobMember       *jobMemberDo
 	JobTag          *jobTagDo
+	MailboxAccount  *mailboxAccountDo
+	MailboxMessage  *mailboxMessageDo
+	MailboxScanTask *mailboxScanTaskDo
 	OperationLog    *operationLogDo
 	Resume          *resumeDo
 	Role            *roleDo
@@ -129,6 +144,9 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		JobCategory:     q.JobCategory.WithContext(ctx),
 		JobMember:       q.JobMember.WithContext(ctx),
 		JobTag:          q.JobTag.WithContext(ctx),
+		MailboxAccount:  q.MailboxAccount.WithContext(ctx),
+		MailboxMessage:  q.MailboxMessage.WithContext(ctx),
+		MailboxScanTask: q.MailboxScanTask.WithContext(ctx),
 		OperationLog:    q.OperationLog.WithContext(ctx),
 		Resume:          q.Resume.WithContext(ctx),
 		Role:            q.Role.WithContext(ctx),

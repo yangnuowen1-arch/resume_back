@@ -29,6 +29,7 @@ type Resume struct {
 	UploadedAt       time.Time  `gorm:"column:uploaded_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"uploaded_at"`
 	CreatedAt        time.Time  `gorm:"column:created_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
 	UpdatedAt        time.Time  `gorm:"column:updated_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
+	FileHash         *string    `gorm:"column:file_hash;type:character(64)" json:"file_hash"`
 }
 
 // TableName Resume's table name

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -29,6 +30,7 @@ type Object struct {
 
 type Uploader interface {
 	Upload(ctx context.Context, key string, file *multipart.FileHeader, contentType string) (*UploadResult, error)
+	UploadBytes(ctx context.Context, key string, data []byte, contentType string) (*UploadResult, error)
 	Open(ctx context.Context, key string) (*Object, error)
 	Delete(ctx context.Context, key string) error
 }
@@ -62,6 +64,23 @@ func (u *LocalUploader) Upload(ctx context.Context, key string, file *multipart.
 	defer target.Close()
 
 	if _, err := io.Copy(target, source); err != nil {
+		return nil, err
+	}
+
+	return &UploadResult{
+		Key: key,
+		URL: "/" + filepath.ToSlash(targetPath),
+	}, nil
+}
+
+// UploadBytes — 直接写入内存字节（供邮箱附件等非 multipart 来源使用）。
+func (u *LocalUploader) UploadBytes(ctx context.Context, key string, data []byte, contentType string) (*UploadResult, error) {
+	targetPath := filepath.Join(u.root, filepath.FromSlash(key))
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		return nil, err
+	}
+
+	if err := os.WriteFile(targetPath, data, 0644); err != nil {
 		return nil, err
 	}
 
@@ -145,6 +164,25 @@ func (u *R2Uploader) Upload(ctx context.Context, key string, file *multipart.Fil
 		Bucket:      aws.String(u.bucket),
 		Key:         aws.String(key),
 		Body:        source,
+		ContentType: aws.String(contentType),
+	}
+
+	if _, err := u.client.PutObject(ctx, input); err != nil {
+		return nil, err
+	}
+
+	return &UploadResult{
+		Key: key,
+		URL: u.objectURL(key),
+	}, nil
+}
+
+// UploadBytes — 直接写入内存字节（供邮箱附件等非 multipart 来源使用）。
+func (u *R2Uploader) UploadBytes(ctx context.Context, key string, data []byte, contentType string) (*UploadResult, error) {
+	input := &s3.PutObjectInput{
+		Bucket:      aws.String(u.bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(data),
 		ContentType: aws.String(contentType),
 	}
 

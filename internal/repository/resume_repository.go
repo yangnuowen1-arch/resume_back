@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
@@ -32,6 +34,7 @@ type ResumeListItem struct {
 type ResumeRepository interface {
 	Create(ctx context.Context, resume *model.Resume) error
 	FindByID(ctx context.Context, id int64) (*model.Resume, error)
+	FindByFileHash(ctx context.Context, fileHash string) (*model.Resume, error)
 	List(ctx context.Context, keyword string, candidateID *int64, language string, page int, pageSize int) ([]ResumeListItem, int64, error)
 	MarkParsing(ctx context.Context, id int64) error
 	MarkParsed(ctx context.Context, id int64, rawText string, parsedData *string, language *string, parsedAt time.Time) error
@@ -57,6 +60,28 @@ func (r *resumeRepository) FindByID(ctx context.Context, id int64) (*model.Resum
 	err := r.db.WithContext(ctx).
 		Where("id = ?", id).
 		First(resume).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return resume, nil
+}
+
+// FindByFileHash 按文件 SHA-256 查简历，用于邮箱导入时跳过重复附件。
+// 未命中返回 (nil, nil)，便于调用方区分「重复」与「出错」。
+func (r *resumeRepository) FindByFileHash(ctx context.Context, fileHash string) (*model.Resume, error) {
+	fileHash = strings.TrimSpace(fileHash)
+	if fileHash == "" {
+		return nil, nil
+	}
+
+	resume := &model.Resume{}
+	err := r.db.WithContext(ctx).
+		Where("file_hash = ?", fileHash).
+		First(resume).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

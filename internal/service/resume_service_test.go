@@ -123,6 +123,10 @@ func (r *fakeResumeRepository) FindByID(ctx context.Context, id int64) (*model.R
 	return &copy, nil
 }
 
+func (r *fakeResumeRepository) FindByFileHash(ctx context.Context, fileHash string) (*model.Resume, error) {
+	return nil, nil
+}
+
 func (r *fakeResumeRepository) List(ctx context.Context, keyword string, candidateID *int64, language string, page int, pageSize int) ([]repository.ResumeListItem, int64, error) {
 	return nil, 0, nil
 }
@@ -160,6 +164,10 @@ type fakeResumeUploader struct {
 }
 
 func (u *fakeResumeUploader) Upload(ctx context.Context, key string, file *multipart.FileHeader, contentType string) (*storage.UploadResult, error) {
+	return nil, nil
+}
+
+func (u *fakeResumeUploader) UploadBytes(ctx context.Context, key string, data []byte, contentType string) (*storage.UploadResult, error) {
 	return nil, nil
 }
 

@@ -34,6 +34,14 @@ type Config struct {
 	DifyOutputLanguageInputName string
 	DifyResultOutputName        string
 	DifyScreeningWorkerCount    int
+
+	GoogleOAuthClientID     string
+	GoogleOAuthClientSecret string
+	GoogleOAuthRedirectURL  string
+
+	MailboxScanCronHour    int
+	MailboxAllowedExt      string
+	MailboxScanWorkerCount int
 }
 
 func LoadConfig() *Config {
@@ -66,6 +74,14 @@ func LoadConfig() *Config {
 		DifyOutputLanguageInputName: getEnv("DIFY_OUTPUT_LANGUAGE_INPUT_NAME", "output_language"),
 		DifyResultOutputName:        getEnv("DIFY_RESULT_OUTPUT_NAME", "screening_result"),
 		DifyScreeningWorkerCount:    getEnvInt("DIFY_SCREENING_WORKER_COUNT", 3),
+
+		GoogleOAuthClientID:     getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
+		GoogleOAuthClientSecret: getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+		GoogleOAuthRedirectURL:  getEnv("GOOGLE_OAUTH_REDIRECT_URL", ""),
+
+		MailboxScanCronHour:    getEnvInt("MAILBOX_SCAN_CRON_HOUR", 23),
+		MailboxAllowedExt:      getEnv("MAILBOX_ALLOWED_EXT", ".pdf,.docx"),
+		MailboxScanWorkerCount: getEnvInt("MAILBOX_SCAN_WORKER_COUNT", 2),
 	}
 }
 
@@ -78,6 +94,16 @@ func (c *Config) R2Enabled() bool {
 
 func (c *Config) DifyEnabled() bool {
 	return c.DifyAPIKey != ""
+}
+
+func (c *Config) GoogleOAuthEnabled() bool {
+	return c.GoogleOAuthClientID != "" &&
+		c.GoogleOAuthClientSecret != "" &&
+		c.GoogleOAuthRedirectURL != ""
+}
+
+func (c *Config) MailboxEnabled() bool {
+	return c.GoogleOAuthEnabled()
 }
 
 func getEnv(key string, defaultValue string) string {

@@ -9,6 +9,7 @@ import (
 	"github.com/yangnuowen1-arch/resume_back/internal/config"
 	"github.com/yangnuowen1-arch/resume_back/internal/dify"
 	"github.com/yangnuowen1-arch/resume_back/internal/handler"
+	"github.com/yangnuowen1-arch/resume_back/internal/mailbox"
 	"github.com/yangnuowen1-arch/resume_back/internal/middleware"
 	"github.com/yangnuowen1-arch/resume_back/internal/parser"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
@@ -109,6 +110,50 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	operationLogService := service.NewOperationLogService(operationLogRepo)
 	operationLogHandler := handler.NewOperationLogHandler(operationLogService)
 
+	// 邮箱扫描服务与定时器
+	var mailboxHandler *handler.MailboxHandler
+	var mailboxScheduler *service.MailboxScheduler
+	if cfg.MailboxEnabled() {
+		providers := make(map[string]mailbox.Provider)
+		if cfg.GoogleOAuthClientID != "" && cfg.GoogleOAuthClientSecret != "" {
+			providers["google"] = mailbox.NewGmailProvider(
+				cfg.GoogleOAuthClientID,
+				cfg.GoogleOAuthClientSecret,
+				cfg.GoogleOAuthRedirectURL,
+			)
+		}
+
+		mailboxAccountRepo := repository.NewMailboxAccountRepository(db)
+		mailboxMessageRepo := repository.NewMailboxMessageRepository(db)
+		mailboxScanTaskRepo := repository.NewMailboxScanTaskRepository(db)
+
+		mailboxService := service.NewMailboxService(service.MailboxDependencies{
+			AccountRepo:   mailboxAccountRepo,
+			MessageRepo:   mailboxMessageRepo,
+			ScanTaskRepo:  mailboxScanTaskRepo,
+			CandidateRepo: candidateRepo,
+			ResumeRepo:    resumeRepo,
+			Uploader:      resumeUploader,
+			Providers:     providers,
+			AllowedExt:    cfg.MailboxAllowedExt,
+			WorkerCount:   cfg.MailboxScanWorkerCount,
+		})
+
+		mailboxHandler = handler.NewMailboxHandler(
+			mailboxService,
+			mailboxAccountRepo,
+			providers,
+			cfg.GoogleOAuthRedirectURL,
+		)
+
+		mailboxScheduler = service.NewMailboxScheduler(
+			mailboxService,
+			mailboxAccountRepo,
+			cfg.MailboxScanCronHour,
+		)
+		mailboxScheduler.Start()
+	}
+
 	//public 路由
 	authRouter := api.Group("/auth")
 	{
@@ -170,6 +215,16 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		private.POST("/applications", applicationHandler.Create)
 
 		private.GET("/operation-logs", operationLogHandler.List)
+
+		// 邮箱扫描路由
+		if mailboxHandler != nil {
+			private.GET("/mailbox/oauth/:provider/url", mailboxHandler.GetOAuthURL)
+			private.GET("/mailbox/oauth/:provider/callback", mailboxHandler.OAuthCallback)
+			private.GET("/mailbox/accounts", mailboxHandler.ListAccounts)
+			private.DELETE("/mailbox/accounts/:id", mailboxHandler.DeleteAccount)
+			private.POST("/mailbox/scan", mailboxHandler.TriggerScan)
+			private.GET("/mailbox/scan/:taskId", mailboxHandler.GetScanStatus)
+		}
 	}
 
 	return r
