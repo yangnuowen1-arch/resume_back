@@ -144,6 +144,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			mailboxAccountRepo,
 			providers,
 			cfg.GoogleOAuthRedirectURL,
+			cfg.MailboxOAuthSuccessRedirectURL,
 		)
 
 		mailboxScheduler = service.NewMailboxScheduler(
@@ -159,6 +160,11 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	{
 		authRouter.POST("/register", authHandler.Register)
 		authRouter.POST("/login", authHandler.Login)
+	}
+	// Google 重定向不会携带业务 JWT。callback 通过一次性 OAuth state 自行校验，
+	// 因此只有这一条邮箱路由保持公开，其余邮箱管理接口仍在 private group 内。
+	if mailboxHandler != nil {
+		api.GET("/mailbox/oauth/:provider/callback", mailboxHandler.OAuthCallback)
 	}
 
 	//private 路由 private 这个 group 挂了鉴权中间件，所以这两个接口需要带 token
@@ -219,7 +225,6 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		// 邮箱扫描路由
 		if mailboxHandler != nil {
 			private.GET("/mailbox/oauth/:provider/url", mailboxHandler.GetOAuthURL)
-			private.GET("/mailbox/oauth/:provider/callback", mailboxHandler.OAuthCallback)
 			private.GET("/mailbox/accounts", mailboxHandler.ListAccounts)
 			private.DELETE("/mailbox/accounts/:id", mailboxHandler.DeleteAccount)
 			private.POST("/mailbox/scan", mailboxHandler.TriggerScan)

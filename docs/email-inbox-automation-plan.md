@@ -8,7 +8,7 @@
 | 维度 | 决策 |
 |------|------|
 | 连接方式 | Gmail **OAuth**（`golang.org/x/oauth2`） |
-| 触发方式 | **手动按钮 + 每晚 23:00 定时**，共用同一套 `ScanAndImport` 核心 |
+| 触发方式 | **OAuth 授权成功后立即扫描 + 手动按钮 + 每晚 23:00 定时**，共用同一套 `ScanAndImport` 核心 |
 | 定时实现 | **`time.Ticker`** 后台 goroutine，零依赖 |
 | 手动响应 | **异步**：接口返回 `taskId`，前端轮询状态（复用现有 screening 任务模式） |
 | 附件过滤 | 默认只收 **`.pdf` / `.docx`**，其余忽略 |
@@ -23,6 +23,7 @@
 
 ```
 触发层
+ ├─ OAuth callback            (授权成功后自动入队并回跳前端，携带 taskId)
  ├─ POST /mailbox/scan        (手动, 立即返回 taskId)
  └─ time.Ticker @23:00        (定时, 后台 goroutine)
         │

@@ -26,3 +26,8 @@ DIFY_JOB_CONTEXT_INPUT_NAME=job_context
 DIFY_OUTPUT_LANGUAGE_INPUT_NAME=output_language
 DIFY_RESULT_OUTPUT_NAME=screening_result
 DIFY_SCREENING_WORKER_COUNT=3
+
+# Optional: after Gmail OAuth succeeds, redirect the browser back to this frontend URL.
+# The callback appends mailboxConnected, accountId, email, and taskId query parameters.
+# Leave empty to return the callback JSON directly.
+MAILBOX_OAUTH_SUCCESS_REDIRECT_URL=http://localhost:5173/candidates

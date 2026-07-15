@@ -35,9 +35,10 @@ type Config struct {
 	DifyResultOutputName        string
 	DifyScreeningWorkerCount    int
 
-	GoogleOAuthClientID     string
-	GoogleOAuthClientSecret string
-	GoogleOAuthRedirectURL  string
+	GoogleOAuthClientID            string
+	GoogleOAuthClientSecret        string
+	GoogleOAuthRedirectURL         string
+	MailboxOAuthSuccessRedirectURL string
 
 	MailboxScanCronHour    int
 	MailboxAllowedExt      string
@@ -75,9 +76,10 @@ func LoadConfig() *Config {
 		DifyResultOutputName:        getEnv("DIFY_RESULT_OUTPUT_NAME", "screening_result"),
 		DifyScreeningWorkerCount:    getEnvInt("DIFY_SCREENING_WORKER_COUNT", 3),
 
-		GoogleOAuthClientID:     getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
-		GoogleOAuthClientSecret: getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
-		GoogleOAuthRedirectURL:  getEnv("GOOGLE_OAUTH_REDIRECT_URL", ""),
+		GoogleOAuthClientID:            getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
+		GoogleOAuthClientSecret:        getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+		GoogleOAuthRedirectURL:         getEnv("GOOGLE_OAUTH_REDIRECT_URL", ""),
+		MailboxOAuthSuccessRedirectURL: getEnv("MAILBOX_OAUTH_SUCCESS_REDIRECT_URL", ""),
 
 		MailboxScanCronHour:    getEnvInt("MAILBOX_SCAN_CRON_HOUR", 23),
 		MailboxAllowedExt:      getEnv("MAILBOX_ALLOWED_EXT", ".pdf,.docx"),

@@ -93,7 +93,8 @@ func (p *GmailProvider) ListUnread(ctx context.Context, token *oauth2.Token) ([]
 
 	messages := make([]Message, 0, len(listResp.Messages))
 	for _, ref := range listResp.Messages {
-		// metadata 格式只取信头，避免拉全文正文。
+		// metadata 格式只取信头，避免拉全文正文。它不会稳定地返回 MIME 子分段，
+		// 因此不能据此判断附件；查询本身已用 has:attachment 限定了结果集。
 		full, err := svc.Users.Messages.Get("me", ref.Id).
 			Format("metadata").
 			MetadataHeaders("From", "Subject").
@@ -102,7 +103,7 @@ func (p *GmailProvider) ListUnread(ctx context.Context, token *oauth2.Token) ([]
 		if err != nil {
 			return nil, fmt.Errorf("gmail get message %s: %w", ref.Id, err)
 		}
-		messages = append(messages, parseGmailMessage(full))
+		messages = append(messages, parseGmailAttachmentQueryMessage(full))
 	}
 	return messages, nil
 }
@@ -195,6 +196,15 @@ func parseGmailMessage(m *gmailapi.Message) Message {
 			break
 		}
 	}
+	return msg
+}
+
+// parseGmailAttachmentQueryMessage 将 Gmail has:attachment 查询结果转为 Message。
+// metadata 响应通常没有 MIME parts，附件实际在 FetchAttachments 的 full 响应中读取；
+// 这里直接标记为有附件，确保扫描任务会下载并按白名单过滤真实附件。
+func parseGmailAttachmentQueryMessage(m *gmailapi.Message) Message {
+	msg := parseGmailMessage(m)
+	msg.HasAttachments = true
 	return msg
 }
 
