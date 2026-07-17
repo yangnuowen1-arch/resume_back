@@ -113,13 +113,13 @@ func (h *ScreeningTaskHandler) List(c *gin.Context) {
 
 // Detail 查询简历筛选任务详情
 // @Summary 查询简历筛选任务详情
-// @Description 返回单个 screening_result 的基础信息、简历原文 resumeText 以及结构化的岗位要求比对 requirements，供前端左右分栏高亮可视化
+// @Description 返回单个 screening_result 及按详情页模块组织的 sections（摘要、候选人信息、评估结论、岗位对比、亮点/关注、最终建议和 Markdown 降级）
 // @Tags 筛选任务
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "筛选任务 ID"
-// @Success 200 {object} response.APIResponse
+// @Success 200 {object} response.APIResponse{data=dto.ScreeningTaskDetailResponse}
 // @Failure 400 {object} response.APIResponse
 // @Failure 401 {object} response.APIResponse
 // @Failure 404 {object} response.APIResponse

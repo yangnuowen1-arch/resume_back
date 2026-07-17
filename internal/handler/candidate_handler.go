@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
+	"github.com/yangnuowen1-arch/resume_back/internal/filemime"
 	"github.com/yangnuowen1-arch/resume_back/internal/response"
 	"github.com/yangnuowen1-arch/resume_back/internal/service"
 	"github.com/yangnuowen1-arch/resume_back/internal/storage"
@@ -425,10 +426,7 @@ func optionalFloat64Form(c *gin.Context, key string) (*float64, bool) {
 func (h *CandidateHandler) uploadCandidateResumeFile(c *gin.Context, fileHeader *multipart.FileHeader) (dto.UploadResumeRequest, string, error) {
 	originalFilename := filepath.Base(fileHeader.Filename)
 	ext := strings.ToLower(filepath.Ext(originalFilename))
-	fileType := fileHeader.Header.Get("Content-Type")
-	if fileType == "" {
-		fileType = strings.TrimPrefix(ext, ".")
-	}
+	fileType := filemime.Normalize(fileHeader.Header.Get("Content-Type"), originalFilename)
 
 	objectKey := "resumes/" + uuid.NewString() + ext
 	uploadResult, err := h.uploader.Upload(c.Request.Context(), objectKey, fileHeader, fileType)

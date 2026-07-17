@@ -4,18 +4,20 @@
 
 package model
 
-import (
-	"time"
-)
+import "time"
 
 const TableNameMailboxMessage = "mailbox_messages"
 
 // MailboxMessage mapped from table <mailbox_messages>
 type MailboxMessage struct {
-	ID          int64     `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true" json:"id"`
-	AccountID   int64     `gorm:"column:account_id;type:bigint;not null" json:"account_id"`
-	MessageID   string    `gorm:"column:message_id;type:character varying(998);not null" json:"message_id"`
-	ProcessedAt time.Time `gorm:"column:processed_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"processed_at"`
+	ID           int64     `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true" json:"id"`
+	AccountID    int64     `gorm:"column:account_id;type:bigint;not null" json:"account_id"`
+	MessageID    string    `gorm:"column:message_id;type:character varying(998);not null" json:"message_id"`
+	FromEmail    *string   `gorm:"column:from_email;type:character varying(255)" json:"from_email"`
+	FromName     *string   `gorm:"column:from_name;type:character varying(255)" json:"from_name"`
+	Subject      *string   `gorm:"column:subject;type:text" json:"subject"`
+	ImportStatus string    `gorm:"column:import_status;type:character varying(20);not null;default:processed" json:"import_status"`
+	ProcessedAt  time.Time `gorm:"column:processed_at;type:timestamp without time zone;not null;default:CURRENT_TIMESTAMP" json:"processed_at"`
 }
 
 // TableName MailboxMessage's table name

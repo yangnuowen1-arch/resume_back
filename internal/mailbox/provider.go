@@ -71,6 +71,10 @@ type Message struct {
 
 // Attachment 是跨平台统一的附件数据（含字节流）。
 type Attachment struct {
+	// ID 是邮件提供方给附件的稳定标识（例如 Gmail attachmentId / MIME partId）。
+	// 用于在同一封邮件重试时识别同一个附件；Provider 无法提供时调用方可回退到序号。
+	ID string
+
 	// Filename 原始附件文件名（含扩展名）。
 	Filename string
 

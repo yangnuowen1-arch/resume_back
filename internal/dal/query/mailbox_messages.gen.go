@@ -30,6 +30,10 @@ func newMailboxMessage(db *gorm.DB, opts ...gen.DOOption) mailboxMessage {
 	_mailboxMessage.ID = field.NewInt64(tableName, "id")
 	_mailboxMessage.AccountID = field.NewInt64(tableName, "account_id")
 	_mailboxMessage.MessageID = field.NewString(tableName, "message_id")
+	_mailboxMessage.FromEmail = field.NewString(tableName, "from_email")
+	_mailboxMessage.FromName = field.NewString(tableName, "from_name")
+	_mailboxMessage.Subject = field.NewString(tableName, "subject")
+	_mailboxMessage.ImportStatus = field.NewString(tableName, "import_status")
 	_mailboxMessage.ProcessedAt = field.NewTime(tableName, "processed_at")
 
 	_mailboxMessage.fillFieldMap()
@@ -40,11 +44,15 @@ func newMailboxMessage(db *gorm.DB, opts ...gen.DOOption) mailboxMessage {
 type mailboxMessage struct {
 	mailboxMessageDo mailboxMessageDo
 
-	ALL         field.Asterisk
-	ID          field.Int64
-	AccountID   field.Int64
-	MessageID   field.String
-	ProcessedAt field.Time
+	ALL          field.Asterisk
+	ID           field.Int64
+	AccountID    field.Int64
+	MessageID    field.String
+	FromEmail    field.String
+	FromName     field.String
+	Subject      field.String
+	ImportStatus field.String
+	ProcessedAt  field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -64,6 +72,10 @@ func (m *mailboxMessage) updateTableName(table string) *mailboxMessage {
 	m.ID = field.NewInt64(table, "id")
 	m.AccountID = field.NewInt64(table, "account_id")
 	m.MessageID = field.NewString(table, "message_id")
+	m.FromEmail = field.NewString(table, "from_email")
+	m.FromName = field.NewString(table, "from_name")
+	m.Subject = field.NewString(table, "subject")
+	m.ImportStatus = field.NewString(table, "import_status")
 	m.ProcessedAt = field.NewTime(table, "processed_at")
 
 	m.fillFieldMap()
@@ -93,10 +105,14 @@ func (m *mailboxMessage) GetFieldByName(fieldName string) (field.OrderExpr, bool
 }
 
 func (m *mailboxMessage) fillFieldMap() {
-	m.fieldMap = make(map[string]field.Expr, 4)
+	m.fieldMap = make(map[string]field.Expr, 8)
 	m.fieldMap["id"] = m.ID
 	m.fieldMap["account_id"] = m.AccountID
 	m.fieldMap["message_id"] = m.MessageID
+	m.fieldMap["from_email"] = m.FromEmail
+	m.fieldMap["from_name"] = m.FromName
+	m.fieldMap["subject"] = m.Subject
+	m.fieldMap["import_status"] = m.ImportStatus
 	m.fieldMap["processed_at"] = m.ProcessedAt
 }
 

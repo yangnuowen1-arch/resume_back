@@ -2,9 +2,9 @@ package response
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yangnuowen1-arch/resume_back/internal/timeutil"
 )
 
 //标准返回结构
@@ -37,7 +37,7 @@ func Success(c *gin.Context, data interface{}) {
 		Message:   "success",
 		Data:      data,
 		RequestID: c.GetString("requestId"),
-		Timestamp: time.Now().Format(time.RFC3339),
+		Timestamp: timeutil.FormatTimestamp(timeutil.Now()),
 	})
 }
 
@@ -47,7 +47,7 @@ func Created(c *gin.Context, data interface{}) {
 		Message:   "success",
 		Data:      data,
 		RequestID: c.GetString("requestId"),
-		Timestamp: time.Now().Format(time.RFC3339),
+		Timestamp: timeutil.FormatTimestamp(timeutil.Now()),
 	})
 }
 
@@ -57,6 +57,6 @@ func Error(c *gin.Context, httpStatus int, code int, message string, errData int
 		Message:   message,
 		Error:     errData,
 		RequestID: c.GetString("requestId"),
-		Timestamp: time.Now().Format(time.RFC3339),
+		Timestamp: timeutil.FormatTimestamp(timeutil.Now()),
 	})
 }

@@ -2,10 +2,10 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
+	"fmt"
 	"mime/multipart"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,38 +19,51 @@ import (
 
 func TestDeriveCandidateName(t *testing.T) {
 	cases := []struct {
-		name      string
-		filename  string
-		fromName  string
-		fromEmail string
-		want      string
+		name     string
+		filename string
+		want     string
 	}{
-		{"文件名优先", "张三.pdf", "李四", "zhangsan@x.com", "张三"},
-		{"去扩展名", "王五-后端.docx", "", "", "王五-后端"},
-		{"无意义回退发件人名", "resume.pdf", "赵六", "zhao@x.com", "赵六"},
-		{"通用词大小写回退", "Resume.PDF", "钱七", "qian@x.com", "钱七"},
-		{"中文简历回退发件人名", "简历.pdf", "孙八", "sun@x.com", "孙八"},
-		{"无名回退邮箱前缀", "cv.docx", "", "john.doe@example.com", "john.doe"},
-		{"全部为空则用文件名", "resume.pdf", "", "", "resume"},
+		{"文件名去扩展名", "张三.pdf", "张三"},
+		{"保留通用文件名", "resume.pdf", "resume"},
+		{"保留中文通用文件名", "简历.pdf", "简历"},
+		{"空文件名有稳定兜底", "", "未命名候选人"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := deriveCandidateName(c.filename, c.fromName, c.fromEmail)
-			if got != c.want {
-				t.Fatalf("deriveCandidateName(%q,%q,%q) = %q, want %q", c.filename, c.fromName, c.fromEmail, got, c.want)
+			if got := deriveCandidateName(c.filename); got != c.want {
+				t.Fatalf("deriveCandidateName(%q) = %q, want %q", c.filename, got, c.want)
 			}
 		})
+	}
+}
+
+func TestMailboxMetadataIsBoundedBeforePersistence(t *testing.T) {
+	filename := strings.Repeat("名", 300) + ".pdf"
+	storedFilename := mailboxFilename(filename)
+	if got := len([]rune(storedFilename)); got > maxMailboxShortTextLength {
+		t.Fatalf("stored filename length=%d, max=%d", got, maxMailboxShortTextLength)
+	}
+	if !strings.HasSuffix(storedFilename, ".pdf") {
+		t.Fatalf("stored filename must keep the file extension, got %q", storedFilename)
+	}
+	if got := len([]rune(deriveCandidateName(filename))); got > maxMailboxShortTextLength {
+		t.Fatalf("candidate shell name length=%d, max=%d", got, maxMailboxShortTextLength)
+	}
+
+	candidate := buildCandidate("候选人", strings.Repeat("x", maxMailboxShortTextLength+1))
+	if candidate.Email == nil || len([]rune(*candidate.Email)) != maxMailboxShortTextLength {
+		t.Fatalf("candidate email should be bounded to %d chars, got %#v", maxMailboxShortTextLength, candidate.Email)
 	}
 }
 
 // 附件白名单过滤：只导入 .pdf/.docx，签名图等被忽略。
 func TestProcessMessageFiltersAttachments(t *testing.T) {
 	svc, deps := newTestMailboxService()
-	msg := mailbox.Message{ID: "m1", FromEmail: "a@x.com", FromName: "甲", HasAttachments: true}
+	msg := mailbox.Message{ID: "m1", FromEmail: "a@x.com", FromName: "甲", Subject: "应聘", HasAttachments: true}
 	deps.provider.attachments = []mailbox.Attachment{
-		{Filename: "resume-甲.pdf", Data: []byte("PDF-A")},
-		{Filename: "signature.png", Data: []byte("IMG")},
-		{Filename: "notes.txt", Data: []byte("TXT")},
+		{ID: "a1", Filename: "resume-甲.pdf", ContentType: "pdf", Data: []byte("PDF-A")},
+		{ID: "a2", Filename: "signature.png", Data: []byte("IMG")},
+		{ID: "a3", Filename: "notes.txt", Data: []byte("TXT")},
 	}
 
 	scanned, imported, skipped, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, msg)
@@ -60,71 +73,77 @@ func TestProcessMessageFiltersAttachments(t *testing.T) {
 	if !scanned || imported != 1 || skipped != 0 {
 		t.Fatalf("scanned=%v imported=%d skipped=%d, want true/1/0", scanned, imported, skipped)
 	}
-	if len(deps.candidate.created) != 1 {
-		t.Fatalf("expected 1 candidate created, got %d", len(deps.candidate.created))
+	if len(deps.message.persisted) != 1 {
+		t.Fatalf("expected 1 persisted attachment, got %d", len(deps.message.persisted))
 	}
 	if len(deps.uploader.uploaded) != 1 {
 		t.Fatalf("expected 1 upload, got %d", len(deps.uploader.uploaded))
 	}
+
+	persisted := deps.message.persisted[0]
+	if persisted.candidate.Name == nil || *persisted.candidate.Name != "resume-甲" {
+		t.Fatalf("candidate name = %#v, want filename-derived resume-甲", persisted.candidate.Name)
+	}
+	if persisted.candidate.Email == nil || *persisted.candidate.Email != "a@x.com" {
+		t.Fatalf("candidate email = %#v, want sender email", persisted.candidate.Email)
+	}
+	if persisted.candidate.CurrentJobID != nil || persisted.candidate.CurrentPosition != nil || persisted.candidate.PositionCategoryID != nil || persisted.candidate.CurrentPositionCategory != nil {
+		t.Fatalf("mail attachment must not infer a current position: %#v", persisted.candidate)
+	}
+	if persisted.message.Subject != "应聘" || persisted.attachment.Filename != "resume-甲.pdf" {
+		t.Fatalf("mail metadata not persisted: %#v", persisted)
+	}
+	if persisted.attachment.ContentType != "application/pdf" {
+		t.Fatalf("mail attachment content type = %q, want application/pdf", persisted.attachment.ContentType)
+	}
+	if persisted.resume.FileType == nil || *persisted.resume.FileType != "application/pdf" {
+		t.Fatalf("resume file type = %#v, want application/pdf", persisted.resume.FileType)
+	}
+	if len(deps.uploader.contentTypes) != 1 || deps.uploader.contentTypes[0] != "application/pdf" {
+		t.Fatalf("uploaded content types = %#v, want [application/pdf]", deps.uploader.contentTypes)
+	}
+	if persisted.resume.FileURL == nil || *persisted.resume.FileURL == "" {
+		t.Fatal("resume file URL must be persisted for the candidate list")
+	}
 }
 
-// file hash 命中已有简历则跳过，不新建候选人。
-func TestProcessMessageSkipsDuplicateByHash(t *testing.T) {
+// 相同内容来自不同邮件时仍视为两次独立投递，每个附件都创建候选人壳。
+func TestProcessMessageImportsSameHashFromDifferentMessages(t *testing.T) {
 	svc, deps := newTestMailboxService()
-	data := []byte("DUP-RESUME")
-	sum := sha256.Sum256(data)
-	deps.resume.byHash[hex.EncodeToString(sum[:])] = &model.Resume{ID: 99}
+	deps.provider.attachments = []mailbox.Attachment{{ID: "gmail-a1", Filename: "resume.pdf", Data: []byte("SAME")}}
 
-	msg := mailbox.Message{ID: "m1", FromEmail: "a@x.com", HasAttachments: true}
-	deps.provider.attachments = []mailbox.Attachment{{Filename: "resume.pdf", Data: data}}
+	for _, messageID := range []string{"m1", "m2"} {
+		scanned, imported, skipped, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, mailbox.Message{
+			ID: messageID, FromEmail: "a@x.com", HasAttachments: true,
+		})
+		if err != nil {
+			t.Fatalf("process %s: %v", messageID, err)
+		}
+		if !scanned || imported != 1 || skipped != 0 {
+			t.Fatalf("message %s: scanned=%v imported=%d skipped=%d, want true/1/0", messageID, scanned, imported, skipped)
+		}
+	}
 
-	scanned, imported, skipped, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, msg)
-	if err != nil {
-		t.Fatalf("processMessage: %v", err)
+	if len(deps.message.persisted) != 2 {
+		t.Fatalf("expected 2 independent persisted attachments, got %d", len(deps.message.persisted))
 	}
-	if !scanned || imported != 0 || skipped != 1 {
-		t.Fatalf("scanned=%v imported=%d skipped=%d, want true/0/1", scanned, imported, skipped)
+	if deps.message.persisted[0].attachment.FileHash != deps.message.persisted[1].attachment.FileHash {
+		t.Fatal("fixture should produce the same file hash")
 	}
-	if len(deps.candidate.created) != 0 {
-		t.Fatalf("expected no candidate created, got %d", len(deps.candidate.created))
-	}
-	if len(deps.uploader.uploaded) != 0 {
-		t.Fatalf("expected no upload on hash hit, got %d", len(deps.uploader.uploaded))
+	if deps.message.persisted[0].attachment.ObjectKey == deps.message.persisted[1].attachment.ObjectKey {
+		t.Fatal("different mailbox messages must not share an R2 object key")
 	}
 }
 
-// 发件人 email 命中已有候选人：挂到旧候选人，不新建。
-func TestProcessMessageMergesByEmail(t *testing.T) {
-	svc, deps := newTestMailboxService()
-	deps.candidate.byEmail["dup@x.com"] = &model.Candidate{ID: 42}
-
-	msg := mailbox.Message{ID: "m1", FromEmail: "dup@x.com", FromName: "老候选人", HasAttachments: true}
-	deps.provider.attachments = []mailbox.Attachment{{Filename: "new-resume.pdf", Data: []byte("NEW")}}
-
-	scanned, imported, skipped, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, msg)
-	if err != nil {
-		t.Fatalf("processMessage: %v", err)
-	}
-	if !scanned || imported != 1 || skipped != 0 {
-		t.Fatalf("scanned=%v imported=%d skipped=%d, want true/1/0", scanned, imported, skipped)
-	}
-	if len(deps.candidate.created) != 0 {
-		t.Fatalf("expected no new candidate, got %d", len(deps.candidate.created))
-	}
-	if deps.candidate.resumeForID != 42 {
-		t.Fatalf("expected resume attached to candidate 42, got %d", deps.candidate.resumeForID)
-	}
-}
-
-// 已处理过的邮件（MarkProcessed 返回 false）直接跳过，不拉附件。
+// 已完整处理的邮件直接跳过，不再下载附件。
 func TestProcessMessageSkipsAlreadyProcessed(t *testing.T) {
 	svc, deps := newTestMailboxService()
 	deps.message.processed["m1"] = struct{}{}
+	deps.provider.attachments = []mailbox.Attachment{{ID: "a1", Filename: "resume.pdf", Data: []byte("X")}}
 
-	msg := mailbox.Message{ID: "m1", FromEmail: "a@x.com", HasAttachments: true}
-	deps.provider.attachments = []mailbox.Attachment{{Filename: "resume.pdf", Data: []byte("X")}}
-
-	scanned, imported, skipped, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, msg)
+	scanned, imported, skipped, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, mailbox.Message{
+		ID: "m1", FromEmail: "a@x.com", HasAttachments: true,
+	})
 	if err != nil {
 		t.Fatalf("processMessage: %v", err)
 	}
@@ -132,18 +151,21 @@ func TestProcessMessageSkipsAlreadyProcessed(t *testing.T) {
 		t.Fatalf("scanned=%v imported=%d skipped=%d, want false/0/0", scanned, imported, skipped)
 	}
 	if deps.provider.fetchCalls != 0 {
-		t.Fatalf("expected no FetchAttachments on already-processed, got %d", deps.provider.fetchCalls)
+		t.Fatalf("already processed mail must not fetch attachments, got %d calls", deps.provider.fetchCalls)
+	}
+	if len(deps.provider.markedRead) != 1 || deps.provider.markedRead[0] != "m1" {
+		t.Fatalf("already processed unread mail should retry MarkRead, got %v", deps.provider.markedRead)
 	}
 }
 
-// 一封邮件多个附件、同一发件人：只建一个候选人，其余简历挂到同一人。
-func TestProcessMessageMultipleAttachmentsOneCandidate(t *testing.T) {
+// 一封邮件多个简历附件：每个附件独立建 candidate + resume，而不是按发件人合并。
+func TestProcessMessageCreatesCandidatePerAttachment(t *testing.T) {
 	svc, deps := newTestMailboxService()
 	msg := mailbox.Message{ID: "m1", FromEmail: "a@x.com", FromName: "甲", HasAttachments: true}
 	deps.provider.attachments = []mailbox.Attachment{
-		{Filename: "简历-甲.pdf", Data: []byte("A1")},
-		{Filename: "作品集.pdf", Data: []byte("A2")},
-		{Filename: "证书.docx", Data: []byte("A3")},
+		{ID: "a1", Filename: "简历-甲.pdf", Data: []byte("A1")},
+		{ID: "a2", Filename: "作品集.pdf", Data: []byte("A2")},
+		{ID: "a3", Filename: "证书.docx", Data: []byte("A3")},
 	}
 
 	scanned, imported, skipped, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, msg)
@@ -153,72 +175,154 @@ func TestProcessMessageMultipleAttachmentsOneCandidate(t *testing.T) {
 	if !scanned || imported != 3 || skipped != 0 {
 		t.Fatalf("scanned=%v imported=%d skipped=%d, want true/3/0", scanned, imported, skipped)
 	}
-	if len(deps.candidate.created) != 1 {
-		t.Fatalf("expected exactly 1 candidate created, got %d", len(deps.candidate.created))
-	}
-	// 首份走 CreateWithResume，其余 2 份走 CreateResumeForCandidate。
-	if deps.candidate.resumeForCalls != 2 {
-		t.Fatalf("expected 2 CreateResumeForCandidate calls, got %d", deps.candidate.resumeForCalls)
+	if len(deps.message.persisted) != 3 {
+		t.Fatalf("expected exactly 3 candidate/resume records, got %d", len(deps.message.persisted))
 	}
 	if len(deps.uploader.uploaded) != 3 {
 		t.Fatalf("expected 3 uploads, got %d", len(deps.uploader.uploaded))
 	}
+	for index, item := range deps.message.persisted {
+		if item.candidate.ID != int64(index+1) || item.resume.CandidateID == nil || *item.resume.CandidateID != item.candidate.ID {
+			t.Fatalf("attachment %d was not persisted as an independent candidate/resume pair: %#v", index, item)
+		}
+	}
 }
 
-// 附件中途失败：邮件不登记 mailbox_messages，下次扫描可重试。
-func TestProcessMessageDoesNotMarkProcessedOnFailure(t *testing.T) {
+// 某附件已在上次失败扫描中成功入库时，重试会上传到同一个 key，但不会重复创建候选人。
+func TestProcessMessageSkipsPersistedAttachmentOnRetry(t *testing.T) {
+	svc, deps := newTestMailboxService()
+	msg := mailbox.Message{ID: "m1", FromEmail: "a@x.com", HasAttachments: true}
+	att := mailbox.Attachment{ID: "gmail-a1", Filename: "resume.pdf", Data: []byte("X")}
+	deps.provider.attachments = []mailbox.Attachment{att}
+
+	fileHash := attachmentHash(att.Data)
+	key := attachmentIdentity(att, 0, fileHash)
+	if _, err := deps.message.PersistAttachment(context.Background(),
+		repository.MailboxMessageMetadata{AccountID: 1, MessageID: msg.ID, FromEmail: msg.FromEmail},
+		repository.MailboxAttachmentMetadata{AttachmentKey: key, AttachmentIndex: 0, Filename: att.Filename, FileHash: fileHash, ObjectKey: attachmentObjectKey(1, msg.ID, key, att)},
+		buildCandidate(deriveCandidateName(att.Filename), msg.FromEmail),
+		&model.Resume{ParseStatus: ResumeParseStatusPending},
+	); err != nil {
+		t.Fatalf("seed persisted attachment: %v", err)
+	}
+
+	scanned, imported, skipped, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, msg)
+	if err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+	if !scanned || imported != 0 || skipped != 1 {
+		t.Fatalf("scanned=%v imported=%d skipped=%d, want true/0/1", scanned, imported, skipped)
+	}
+	if len(deps.message.persisted) != 1 {
+		t.Fatalf("expected no duplicate candidate/resume record, got %d", len(deps.message.persisted))
+	}
+	if len(deps.uploader.uploaded) != 1 {
+		t.Fatalf("retry should re-upload the deterministic object once, got %d", len(deps.uploader.uploaded))
+	}
+}
+
+// 附件中途失败时邮件不标记完成；下一次扫描跳过首份已持久化附件并继续补齐。
+func TestProcessMessageRetriesPartialMailWithoutDuplicateCandidates(t *testing.T) {
 	svc, deps := newTestMailboxService()
 	deps.uploader.failAfter = 2 // 第 2 次上传起失败
 	msg := mailbox.Message{ID: "m1", FromEmail: "a@x.com", HasAttachments: true}
 	deps.provider.attachments = []mailbox.Attachment{
-		{Filename: "a.pdf", Data: []byte("A1")},
-		{Filename: "b.pdf", Data: []byte("A2")},
+		{ID: "a1", Filename: "a.pdf", Data: []byte("A1")},
+		{ID: "a2", Filename: "b.pdf", Data: []byte("A2")},
 	}
 
 	scanned, _, _, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, msg)
 	if err == nil {
-		t.Fatal("expected error when an attachment upload fails")
+		t.Fatal("expected error when the second attachment upload fails")
 	}
 	if scanned {
 		t.Fatal("scanned should be false on failure")
 	}
-	if _, ok := deps.message.processed["m1"]; ok {
-		t.Fatal("message must NOT be marked processed on failure (so next scan retries)")
+	if _, ok := deps.message.processed[msg.ID]; ok {
+		t.Fatal("message must not be marked processed on partial failure")
 	}
-	if len(deps.provider.markedRead) != 0 {
-		t.Fatalf("message must NOT be marked read on failure, got %v", deps.provider.markedRead)
+	if len(deps.message.persisted) != 1 {
+		t.Fatalf("first attachment should have been persisted, got %d", len(deps.message.persisted))
+	}
+
+	deps.uploader.failAfter = 0
+	scanned, imported, skipped, err := svc.processMessage(context.Background(), deps.provider, &oauth2.Token{}, 1, msg)
+	if err != nil {
+		t.Fatalf("retry processMessage: %v", err)
+	}
+	if !scanned || imported != 1 || skipped != 1 {
+		t.Fatalf("retry scanned=%v imported=%d skipped=%d, want true/1/1", scanned, imported, skipped)
+	}
+	if len(deps.message.persisted) != 2 {
+		t.Fatalf("expected 2 total candidate/resume records after retry, got %d", len(deps.message.persisted))
+	}
+	if _, ok := deps.message.processed[msg.ID]; !ok {
+		t.Fatal("message should be marked processed after all attachments succeed")
+	}
+}
+
+func TestAttachmentObjectKeyIsStableAndScopedToMessageAttachment(t *testing.T) {
+	att := mailbox.Attachment{ID: "gmail-a1", Filename: "resume.PDF"}
+	attachmentKey := attachmentIdentity(att, 0, "hash")
+	first := attachmentObjectKey(9, "message-1", attachmentKey, att)
+	if again := attachmentObjectKey(9, "message-1", attachmentKey, att); again != first {
+		t.Fatalf("object key must be deterministic: got %q, want %q", again, first)
+	}
+	if other := attachmentObjectKey(9, "message-2", attachmentKey, att); other == first {
+		t.Fatal("different messages must use different object keys")
+	}
+	if first[len(first)-4:] != ".pdf" {
+		t.Fatalf("object key should keep normalized extension, got %q", first)
+	}
+}
+
+func TestMailboxPersistenceIdentifiersAreBoundedAndStable(t *testing.T) {
+	longProviderID := strings.Repeat("附件", 1000)
+	att := mailbox.Attachment{ID: longProviderID, Filename: "resume.pdf"}
+	key := attachmentIdentity(att, 0, "file-hash")
+	if len([]rune(key)) > 128 {
+		t.Fatalf("attachment key length=%d, want <= 128", len([]rune(key)))
+	}
+	if strings.Contains(key, longProviderID) {
+		t.Fatal("attachment key must not persist an unbounded provider identifier")
+	}
+	if again := attachmentIdentity(att, 0, "file-hash"); again != key {
+		t.Fatalf("attachment key must be stable: got %q, want %q", again, key)
+	}
+
+	longMessageID := strings.Repeat("邮件", 1000)
+	persisted := mailboxMessagePersistenceID(longMessageID)
+	if len([]rune(persisted)) > 512 {
+		t.Fatalf("message ID length=%d, want <= 512", len([]rune(persisted)))
+	}
+	if again := mailboxMessagePersistenceID(longMessageID); again != persisted {
+		t.Fatalf("message ID must be stable: got %q, want %q", again, persisted)
 	}
 }
 
 // --- 测试脚手架 ---
 
 type mailboxTestDeps struct {
-	provider  *fakeProvider
-	message   *fakeMessageRepo
-	candidate *fakeCandidateRepo
-	resume    *fakeMailboxResumeRepo
-	account   *fakeAccountRepo
-	uploader  *fakeBytesUploader
+	provider *fakeProvider
+	message  *fakeMessageRepo
+	account  *fakeAccountRepo
+	uploader *fakeBytesUploader
 }
 
 func newTestMailboxService() (*mailboxService, *mailboxTestDeps) {
 	deps := &mailboxTestDeps{
-		provider:  &fakeProvider{},
-		message:   &fakeMessageRepo{processed: map[string]struct{}{}},
-		candidate: &fakeCandidateRepo{byEmail: map[string]*model.Candidate{}},
-		resume:    &fakeMailboxResumeRepo{byHash: map[string]*model.Resume{}},
-		account:   &fakeAccountRepo{},
-		uploader:  &fakeBytesUploader{},
+		provider: &fakeProvider{},
+		message:  &fakeMessageRepo{processed: map[string]struct{}{}, attachments: map[string]struct{}{}},
+		account:  &fakeAccountRepo{},
+		uploader: &fakeBytesUploader{},
 	}
 	svc := &mailboxService{
-		accountRepo:   deps.account,
-		messageRepo:   deps.message,
-		candidateRepo: deps.candidate,
-		resumeRepo:    deps.resume,
-		uploader:      deps.uploader,
-		providers:     map[string]mailbox.Provider{"google": deps.provider},
-		allowedExt:    mailbox.AllowedExtSet(".pdf,.docx"),
-		running:       map[int64]struct{}{},
+		accountRepo: deps.account,
+		messageRepo: deps.message,
+		uploader:    deps.uploader,
+		providers:   map[string]mailbox.Provider{"google": deps.provider},
+		allowedExt:  mailbox.AllowedExtSet(".pdf,.docx"),
+		running:     map[int64]struct{}{},
 	}
 	return svc, deps
 }
@@ -229,8 +333,8 @@ type fakeProvider struct {
 	markedRead  []string
 }
 
-func (p *fakeProvider) Provider() string                       { return "google" }
-func (p *fakeProvider) AuthURL(state string) string            { return "" }
+func (p *fakeProvider) Provider() string            { return "google" }
+func (p *fakeProvider) AuthURL(state string) string { return "" }
 func (p *fakeProvider) Exchange(ctx context.Context, code string) (*oauth2.Token, error) {
 	return &oauth2.Token{}, nil
 }
@@ -252,14 +356,49 @@ func (p *fakeProvider) MarkRead(ctx context.Context, token *oauth2.Token, messag
 	return nil
 }
 
+type persistedMailboxAttachment struct {
+	message    repository.MailboxMessageMetadata
+	attachment repository.MailboxAttachmentMetadata
+	candidate  *model.Candidate
+	resume     *model.Resume
+}
+
 type fakeMessageRepo struct {
-	processed map[string]struct{}
+	processed   map[string]struct{}
+	attachments map[string]struct{}
+	persisted   []persistedMailboxAttachment
+}
+
+func (r *fakeMessageRepo) PersistAttachment(
+	ctx context.Context,
+	message repository.MailboxMessageMetadata,
+	attachment repository.MailboxAttachmentMetadata,
+	candidate *model.Candidate,
+	resume *model.Resume,
+) (bool, error) {
+	key := fakeMailboxAttachmentKey(message, attachment)
+	if _, ok := r.attachments[key]; ok {
+		return false, nil
+	}
+
+	candidate.ID = int64(len(r.persisted) + 1)
+	resume.ID = candidate.ID
+	resume.CandidateID = &candidate.ID
+	r.attachments[key] = struct{}{}
+	r.persisted = append(r.persisted, persistedMailboxAttachment{
+		message:    message,
+		attachment: attachment,
+		candidate:  candidate,
+		resume:     resume,
+	})
+	return true, nil
 }
 
 func (r *fakeMessageRepo) Exists(ctx context.Context, accountID int64, messageID string) (bool, error) {
 	_, ok := r.processed[messageID]
 	return ok, nil
 }
+
 func (r *fakeMessageRepo) MarkProcessed(ctx context.Context, accountID int64, messageID string) (bool, error) {
 	if _, ok := r.processed[messageID]; ok {
 		return false, nil
@@ -268,73 +407,8 @@ func (r *fakeMessageRepo) MarkProcessed(ctx context.Context, accountID int64, me
 	return true, nil
 }
 
-type fakeCandidateRepo struct {
-	byEmail        map[string]*model.Candidate
-	created        []*model.Candidate
-	resumeForID    int64
-	resumeForCalls int
-}
-
-func (r *fakeCandidateRepo) FindByEmail(ctx context.Context, email string) (*model.Candidate, error) {
-	return r.byEmail[email], nil
-}
-func (r *fakeCandidateRepo) CreateWithResume(ctx context.Context, candidate *model.Candidate, resume *model.Resume) error {
-	candidate.ID = int64(len(r.created) + 1)
-	r.created = append(r.created, candidate)
-	return nil
-}
-func (r *fakeCandidateRepo) CreateResumeForCandidate(ctx context.Context, candidateID int64, resume *model.Resume, candidateStatus string) error {
-	r.resumeForID = candidateID
-	r.resumeForCalls++
-	return nil
-}
-func (r *fakeCandidateRepo) Create(ctx context.Context, candidate *model.Candidate) error {
-	return nil
-}
-func (r *fakeCandidateRepo) EnqueueScreening(ctx context.Context, candidateID int64, jobID *int64, createdBy int64, candidateStatus string) repository.CandidateAnalysisResult {
-	return repository.CandidateAnalysisResult{}
-}
-func (r *fakeCandidateRepo) Update(ctx context.Context, candidate *model.Candidate) error { return nil }
-func (r *fakeCandidateRepo) UpdateWithResume(ctx context.Context, candidate *model.Candidate, resume *model.Resume) error {
-	return nil
-}
-func (r *fakeCandidateRepo) FindByID(ctx context.Context, id int64) (*model.Candidate, error) {
-	return nil, nil
-}
-func (r *fakeCandidateRepo) List(ctx context.Context, filter repository.CandidateListFilter) ([]repository.CandidateListItem, int64, error) {
-	return nil, 0, nil
-}
-func (r *fakeCandidateRepo) ActivePositionCategoryExists(ctx context.Context, id int64) (bool, error) {
-	return false, nil
-}
-func (r *fakeCandidateRepo) FindJobSelectionByID(ctx context.Context, id int64) (repository.CandidateJobSelection, error) {
-	return repository.CandidateJobSelection{}, nil
-}
-
-type fakeMailboxResumeRepo struct {
-	byHash  map[string]*model.Resume
-	created []*model.Resume
-}
-
-func (r *fakeMailboxResumeRepo) FindByFileHash(ctx context.Context, fileHash string) (*model.Resume, error) {
-	return r.byHash[fileHash], nil
-}
-func (r *fakeMailboxResumeRepo) Create(ctx context.Context, resume *model.Resume) error {
-	r.created = append(r.created, resume)
-	return nil
-}
-func (r *fakeMailboxResumeRepo) FindByID(ctx context.Context, id int64) (*model.Resume, error) {
-	return nil, nil
-}
-func (r *fakeMailboxResumeRepo) List(ctx context.Context, keyword string, candidateID *int64, language string, page int, pageSize int) ([]repository.ResumeListItem, int64, error) {
-	return nil, 0, nil
-}
-func (r *fakeMailboxResumeRepo) MarkParsing(ctx context.Context, id int64) error { return nil }
-func (r *fakeMailboxResumeRepo) MarkParsed(ctx context.Context, id int64, rawText string, parsedData *string, language *string, parsedAt time.Time) error {
-	return nil
-}
-func (r *fakeMailboxResumeRepo) MarkParseFailed(ctx context.Context, id int64, message string) error {
-	return nil
+func fakeMailboxAttachmentKey(message repository.MailboxMessageMetadata, attachment repository.MailboxAttachmentMetadata) string {
+	return fmt.Sprintf("%d:%s:%s", message.AccountID, message.MessageID, attachment.AttachmentKey)
 }
 
 type fakeAccountRepo struct {
@@ -370,7 +444,8 @@ func (r *fakeAccountRepo) Delete(ctx context.Context, id int64) error {
 }
 
 type fakeBytesUploader struct {
-	uploaded []string
+	uploaded     []string
+	contentTypes []string
 	// failAfter>0 时，第 failAfter 次 UploadBytes 起返回错误（模拟中途失败）。
 	failAfter int
 }
@@ -383,6 +458,7 @@ func (u *fakeBytesUploader) UploadBytes(ctx context.Context, key string, data []
 		return nil, errors.New("upload boom")
 	}
 	u.uploaded = append(u.uploaded, key)
+	u.contentTypes = append(u.contentTypes, contentType)
 	return &storage.UploadResult{Key: key, URL: "/" + key}, nil
 }
 func (u *fakeBytesUploader) Open(ctx context.Context, key string) (*storage.Object, error) {

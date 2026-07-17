@@ -56,15 +56,89 @@ type RequirementEvidence struct {
 }
 
 type ScreeningRequirement struct {
-	ID       string                `json:"id"`
-	Label    string                `json:"label"`
-	Status   string                `json:"status"`
-	Comment  *string               `json:"comment"`
-	Evidence []RequirementEvidence `json:"evidence"`
+	ID                 string                `json:"id"`
+	Label              string                `json:"label"`
+	CandidateSituation *string               `json:"candidateSituation"`
+	Status             string                `json:"status"`
+	Comment            *string               `json:"comment"`
+	Evidence           []RequirementEvidence `json:"evidence"`
+}
+
+// ScreeningSummarySection 对应详情页顶部的「简历摘要」卡片。
+type ScreeningSummarySection struct {
+	Text *string `json:"text"`
+}
+
+// ScreeningCandidateInfoSection 对应详情页的「候选人信息」卡片。
+type ScreeningCandidateInfoSection struct {
+	Name              *string  `json:"name"`
+	AppliedPosition   string   `json:"appliedPosition"`
+	CurrentTitle      *string  `json:"currentTitle"`
+	YearsOfExperience *float64 `json:"yearsOfExperience"`
+	HighestEducation  *string  `json:"highestEducation"`
+	TaskStatus        string   `json:"taskStatus"`
+	TaskErrorMessage  *string  `json:"taskErrorMessage"`
+}
+
+// ScreeningAssessmentSection 对应详情页的「评估结论」卡片。
+type ScreeningAssessmentSection struct {
+	Score          *float64 `json:"score"`
+	MatchLevel     *string  `json:"matchLevel"`
+	Recommendation *string  `json:"recommendation"`
+}
+
+// ScreeningRequirementsComparisonSection 对应岗位要求表、匹配亮点和重点关注三个区域。
+// Items 为完整表格数据；MatchedItems 和 AttentionItems 已按页面展示规则分组，
+// 前端无需再次筛选状态。
+type ScreeningRequirementsComparisonSection struct {
+	Items          []ScreeningRequirement `json:"items"`
+	MatchedItems   []ScreeningRequirement `json:"matchedItems"`
+	AttentionItems []ScreeningRequirement `json:"attentionItems"`
+}
+
+// ScreeningCandidateAnalysisSection 对应候选人优劣势、风险及面试建议区域。
+type ScreeningCandidateAnalysisSection struct {
+	Strengths                   []string `json:"strengths"`
+	Weaknesses                  []string `json:"weaknesses"`
+	Risks                       []string `json:"risks"`
+	SuggestedInterviewQuestions []string `json:"suggestedInterviewQuestions"`
+}
+
+// ScreeningFinalRecommendationSection 对应详情页底部的「最终筛选建议」卡片。
+type ScreeningFinalRecommendationSection struct {
+	Recommendation *string `json:"recommendation"`
+	Text           *string `json:"text"`
+}
+
+// ScreeningResumeSection 为简历原文和证据高亮提供状态信息。
+type ScreeningResumeSection struct {
+	Text               *string `json:"text"`
+	TextAvailable      bool    `json:"textAvailable"`
+	HighlightAvailable bool    `json:"highlightAvailable"`
+}
+
+// ScreeningFallbackSection 仅用于结构化数据缺失时的 Markdown 降级展示。
+type ScreeningFallbackSection struct {
+	MarkdownReport            *string `json:"markdownReport"`
+	ShouldUseMarkdownFallback bool    `json:"shouldUseMarkdownFallback"`
+}
+
+// ScreeningTaskDetailSections 按详情页的显示模块组织筛选结果。
+type ScreeningTaskDetailSections struct {
+	Summary                ScreeningSummarySection                `json:"summary"`
+	CandidateInfo          ScreeningCandidateInfoSection          `json:"candidateInfo"`
+	Assessment             ScreeningAssessmentSection             `json:"assessment"`
+	RequirementsComparison ScreeningRequirementsComparisonSection `json:"requirementsComparison"`
+	CandidateAnalysis      ScreeningCandidateAnalysisSection      `json:"candidateAnalysis"`
+	FinalRecommendation    ScreeningFinalRecommendationSection    `json:"finalRecommendation"`
+	Resume                 ScreeningResumeSection                 `json:"resume"`
+	Fallback               ScreeningFallbackSection               `json:"fallback"`
 }
 
 type ScreeningTaskDetailResponse struct {
 	ID             int64                  `json:"id"`
+	Status         string                 `json:"status"`
+	ErrorMessage   *string                `json:"errorMessage"`
 	CandidateName  *string                `json:"candidateName"`
 	Position       string                 `json:"position"`
 	AIScore        *float64               `json:"aiScore"`
@@ -74,4 +148,6 @@ type ScreeningTaskDetailResponse struct {
 	MarkdownReport *string                `json:"markdownReport,omitempty"`
 	ResumeText     *string                `json:"resumeText"`
 	Requirements   []ScreeningRequirement `json:"requirements"`
+	// Sections 是详情页的新主数据源；保留上方平铺字段以兼容已发布的前端。
+	Sections ScreeningTaskDetailSections `json:"sections"`
 }

@@ -662,6 +662,46 @@
                 }
             }
         },
+        "/dashboard/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "实时统计简历、待筛选任务、推荐和拒绝数量；响应不使用缓存，确保仪表盘与当前业务数据同步",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "仪表盘"
+                ],
+                "summary": "查询仪表盘摘要",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/job-categories": {
             "get": {
                 "security": [
@@ -1443,6 +1483,398 @@
                 }
             }
         },
+        "/mailbox/accounts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前已授权连接的所有邮箱账号列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "邮箱"
+                ],
+                "summary": "列出已连接邮箱账号",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mailbox/accounts/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除指定的邮箱账号连接",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "邮箱"
+                ],
+                "summary": "解绑邮箱账号",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "账号 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mailbox/oauth/{provider}/callback": {
+            "get": {
+                "description": "邮箱平台授权后的回调地址，用 code 换取 token 并存储到 mailbox_accounts；授权成功后立即异步扫描未读邮件中的简历附件",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "邮箱"
+                ],
+                "summary": "OAuth 授权回调",
+                "parameters": [
+                    {
+                        "enum": [
+                            "google"
+                        ],
+                        "type": "string",
+                        "description": "邮箱平台",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "OAuth 授权码",
+                        "name": "code",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "一次性 OAuth 状态码",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "OAuth 授权错误码",
+                        "name": "error",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "accountId": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "taskId": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mailbox/oauth/{provider}/url": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回指定邮箱平台（google）的 OAuth 授权跳转地址，用户点击后授权",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "邮箱"
+                ],
+                "summary": "获取 OAuth 授权地址",
+                "parameters": [
+                    {
+                        "enum": [
+                            "google"
+                        ],
+                        "type": "string",
+                        "description": "邮箱平台",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "url": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mailbox/scan": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "触发指定邮箱账号的扫描任务，异步执行，返回任务 ID 供轮询状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "邮箱"
+                ],
+                "summary": "手动触发邮箱扫描",
+                "parameters": [
+                    {
+                        "description": "扫描请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "accountId": {
+                                    "type": "integer",
+                                    "format": "int64"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "taskId": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mailbox/scan/{taskId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据任务 ID 查询扫描任务的状态与统计（scanned/imported/skipped）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "邮箱"
+                ],
+                "summary": "查询扫描任务状态",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "任务 ID",
+                        "name": "taskId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/operation-logs": {
             "get": {
                 "security": [
@@ -1481,11 +1913,23 @@
                         "description": "用户筛选：用户名/姓名/用户 ID",
                         "name": "user",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "操作日期，格式 YYYY-MM-DD（兼容 YYYY/MM/DD），按 Asia/Shanghai 自然日筛选",
+                        "name": "date",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.APIResponse"
                         }
@@ -1883,6 +2327,79 @@
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/screening-tasks/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回单个 screening_result 及按详情页模块组织的 sections（摘要、候选人信息、评估结论、岗位对比、亮点/关注、最终建议和 Markdown 降级）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "筛选任务"
+                ],
+                "summary": "查询简历筛选任务详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "筛选任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.ScreeningTaskDetailResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.APIResponse"
                         }
@@ -3077,6 +3594,20 @@
                 }
             }
         },
+        "dto.RequirementEvidence": {
+            "type": "object",
+            "properties": {
+                "end": {
+                    "type": "integer"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ResumeResponse": {
             "type": "object",
             "properties": {
@@ -3151,6 +3682,249 @@
                 },
                 "resumeId": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.ScreeningAssessmentSection": {
+            "type": "object",
+            "properties": {
+                "matchLevel": {
+                    "type": "string"
+                },
+                "recommendation": {
+                    "type": "string"
+                },
+                "score": {
+                    "type": "number"
+                }
+            }
+        },
+        "dto.ScreeningCandidateAnalysisSection": {
+            "type": "object",
+            "properties": {
+                "risks": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "strengths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "suggestedInterviewQuestions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "weaknesses": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "dto.ScreeningCandidateInfoSection": {
+            "type": "object",
+            "properties": {
+                "appliedPosition": {
+                    "type": "string"
+                },
+                "currentTitle": {
+                    "type": "string"
+                },
+                "highestEducation": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "taskErrorMessage": {
+                    "type": "string"
+                },
+                "taskStatus": {
+                    "type": "string"
+                },
+                "yearsOfExperience": {
+                    "type": "number"
+                }
+            }
+        },
+        "dto.ScreeningFallbackSection": {
+            "type": "object",
+            "properties": {
+                "markdownReport": {
+                    "type": "string"
+                },
+                "shouldUseMarkdownFallback": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.ScreeningFinalRecommendationSection": {
+            "type": "object",
+            "properties": {
+                "recommendation": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ScreeningRequirement": {
+            "type": "object",
+            "properties": {
+                "candidateSituation": {
+                    "type": "string"
+                },
+                "comment": {
+                    "type": "string"
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.RequirementEvidence"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ScreeningRequirementsComparisonSection": {
+            "type": "object",
+            "properties": {
+                "attentionItems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ScreeningRequirement"
+                    }
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ScreeningRequirement"
+                    }
+                },
+                "matchedItems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ScreeningRequirement"
+                    }
+                }
+            }
+        },
+        "dto.ScreeningResumeSection": {
+            "type": "object",
+            "properties": {
+                "highlightAvailable": {
+                    "type": "boolean"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "textAvailable": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.ScreeningSummarySection": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ScreeningTaskDetailResponse": {
+            "type": "object",
+            "properties": {
+                "aiScore": {
+                    "type": "number"
+                },
+                "candidateName": {
+                    "type": "string"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "markdownReport": {
+                    "type": "string"
+                },
+                "matchLevel": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "string"
+                },
+                "recommendation": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ScreeningRequirement"
+                    }
+                },
+                "resumeText": {
+                    "type": "string"
+                },
+                "sections": {
+                    "description": "Sections 是详情页的新主数据源；保留上方平铺字段以兼容已发布的前端。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.ScreeningTaskDetailSections"
+                        }
+                    ]
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ScreeningTaskDetailSections": {
+            "type": "object",
+            "properties": {
+                "assessment": {
+                    "$ref": "#/definitions/dto.ScreeningAssessmentSection"
+                },
+                "candidateAnalysis": {
+                    "$ref": "#/definitions/dto.ScreeningCandidateAnalysisSection"
+                },
+                "candidateInfo": {
+                    "$ref": "#/definitions/dto.ScreeningCandidateInfoSection"
+                },
+                "fallback": {
+                    "$ref": "#/definitions/dto.ScreeningFallbackSection"
+                },
+                "finalRecommendation": {
+                    "$ref": "#/definitions/dto.ScreeningFinalRecommendationSection"
+                },
+                "requirementsComparison": {
+                    "$ref": "#/definitions/dto.ScreeningRequirementsComparisonSection"
+                },
+                "resume": {
+                    "$ref": "#/definitions/dto.ScreeningResumeSection"
+                },
+                "summary": {
+                    "$ref": "#/definitions/dto.ScreeningSummarySection"
                 }
             }
         },

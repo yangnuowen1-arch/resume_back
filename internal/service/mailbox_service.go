@@ -14,9 +14,8 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/google/uuid"
-
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
+	"github.com/yangnuowen1-arch/resume_back/internal/filemime"
 	"github.com/yangnuowen1-arch/resume_back/internal/mailbox"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
 	"github.com/yangnuowen1-arch/resume_back/internal/storage"
@@ -29,7 +28,7 @@ var ErrScanInProgress = errors.New("该邮箱账号正在扫描中")
 type ScanResult struct {
 	Scanned  int // 本次实际处理的未读邮件数（跳过已处理的不计）
 	Imported int // 新建的简历数
-	Skipped  int // 因文件 hash 命中而跳过的附件数
+	Skipped  int // 同一封邮件中此前已持久化、重试时跳过的附件数
 }
 
 // MailboxService 是邮箱扫描导入的核心，手动触发与定时任务共用。
@@ -41,17 +40,17 @@ type MailboxService interface {
 
 // ScanTaskStatus 返回扫描任务的状态与统计。
 type ScanTaskStatus struct {
-	ID            int64
-	AccountID     int64
-	TriggerSource string
-	Status        string
-	Scanned       int32
-	Imported      int32
-	Skipped       int32
-	Error         *string
-	StartedAt     *time.Time
-	FinishedAt    *time.Time
-	CreatedAt     time.Time
+	ID            int64      `json:"id"`
+	AccountID     int64      `json:"accountId"`
+	TriggerSource string     `json:"triggerSource"`
+	Status        string     `json:"status"`
+	Scanned       int32      `json:"scanned"`
+	Imported      int32      `json:"imported"`
+	Skipped       int32      `json:"skipped"`
+	Error         *string    `json:"error"`
+	StartedAt     *time.Time `json:"startedAt"`
+	FinishedAt    *time.Time `json:"finishedAt"`
+	CreatedAt     time.Time  `json:"createdAt"`
 }
 
 const (
@@ -66,16 +65,16 @@ const (
 	defaultScanQueueSize   = 50
 	defaultScanWorkerCount = 2
 	maxScanWorkerCount     = 5
+
+	maxMailboxShortTextLength = 255
 )
 
 // MailboxDependencies 汇聚扫描导入所需的仓储、存储与 Provider 工厂。
 type MailboxDependencies struct {
-	AccountRepo   repository.MailboxAccountRepository
-	MessageRepo   repository.MailboxMessageRepository
-	ScanTaskRepo  repository.MailboxScanTaskRepository
-	CandidateRepo repository.CandidateRepository
-	ResumeRepo    repository.ResumeRepository
-	Uploader      storage.Uploader
+	AccountRepo  repository.MailboxAccountRepository
+	MessageRepo  repository.MailboxMessageRepository
+	ScanTaskRepo repository.MailboxScanTaskRepository
+	Uploader     storage.Uploader
 	// Providers 按平台标识（"google"）索引已配置的 Provider。
 	Providers   map[string]mailbox.Provider
 	AllowedExt  string // 逗号分隔白名单，如 ".pdf,.docx"
@@ -89,15 +88,13 @@ type scanTaskJob struct {
 }
 
 type mailboxService struct {
-	accountRepo   repository.MailboxAccountRepository
-	messageRepo   repository.MailboxMessageRepository
-	scanTaskRepo  repository.MailboxScanTaskRepository
-	candidateRepo repository.CandidateRepository
-	resumeRepo    repository.ResumeRepository
-	uploader      storage.Uploader
-	providers     map[string]mailbox.Provider
-	allowedExt    map[string]struct{}
-	queue         chan scanTaskJob
+	accountRepo  repository.MailboxAccountRepository
+	messageRepo  repository.MailboxMessageRepository
+	scanTaskRepo repository.MailboxScanTaskRepository
+	uploader     storage.Uploader
+	providers    map[string]mailbox.Provider
+	allowedExt   map[string]struct{}
+	queue        chan scanTaskJob
 
 	// running 记录正在扫描的账号 ID，保证同一账号同时只跑一个扫描。
 	mu      sync.Mutex
@@ -106,15 +103,13 @@ type mailboxService struct {
 
 func NewMailboxService(deps MailboxDependencies) MailboxService {
 	service := &mailboxService{
-		accountRepo:   deps.AccountRepo,
-		messageRepo:   deps.MessageRepo,
-		scanTaskRepo:  deps.ScanTaskRepo,
-		candidateRepo: deps.CandidateRepo,
-		resumeRepo:    deps.ResumeRepo,
-		uploader:      deps.Uploader,
-		providers:     deps.Providers,
-		allowedExt:    mailbox.AllowedExtSet(deps.AllowedExt),
-		running:       make(map[int64]struct{}),
+		accountRepo:  deps.AccountRepo,
+		messageRepo:  deps.MessageRepo,
+		scanTaskRepo: deps.ScanTaskRepo,
+		uploader:     deps.Uploader,
+		providers:    deps.Providers,
+		allowedExt:   mailbox.AllowedExtSet(deps.AllowedExt),
+		running:      make(map[int64]struct{}),
 	}
 
 	// 启动任务队列与 worker 池（仅当 ScanTaskRepo 配置时）
@@ -271,7 +266,6 @@ func (s *mailboxService) processScanTask(ctx context.Context, job scanTaskJob) e
 	return nil
 }
 
-
 // ScanAndImport 扫描单个邮箱账号的未读邮件，提取简历附件并导入候选人库。
 // 手动触发与定时任务共用此核心。同一账号同时只允许一个扫描在跑。
 func (s *mailboxService) ScanAndImport(ctx context.Context, accountID int64) (ScanResult, error) {
@@ -359,18 +353,25 @@ func (s *mailboxService) validToken(ctx context.Context, account *model.MailboxA
 
 // processMessage 处理单封邮件：跳过已处理 → 拉附件 → 过滤 → 导入 → 登记已处理 → 标已读。
 // 返回 scanned=false 表示该邮件此前已成功处理（跳过、不计入统计）；
-// imported 为本封新建的简历数，skipped 为因 hash 命中而跳过的附件数。
+// imported 为本封新建的候选人/简历对数，skipped 为此前已持久化的同邮件附件数。
 //
-// 关键顺序：先导入全部附件、都成功后才 MarkProcessed。任一附件失败时邮件不登记，
-// 下次扫描会重试；已入库的附件靠 uq_resumes_file_hash 命中跳过，不会重复入库。
-// 同账号并发由上层 running 锁串行化；跨进程并发则由 file_hash 唯一索引兜底。
+// 关键顺序：先导入全部附件、都成功后才 MarkProcessed。任一附件失败时邮件不会标记完成，
+// 下次扫描会重试；已入库的附件靠 (邮件, 附件标识) 命中跳过，不会重复建候选人。
+// 同账号并发由上层 running 锁串行化；跨进程并发由附件唯一索引兜底。
 func (s *mailboxService) processMessage(ctx context.Context, provider mailbox.Provider, token *oauth2.Token, accountID int64, msg mailbox.Message) (scanned bool, imported int, skipped int, err error) {
+	persistedMessageID := mailboxMessagePersistenceID(msg.ID)
+
 	// 快速跳过：此前已成功处理的邮件不再拉附件（拉附件字节较贵）。
-	already, err := s.messageRepo.Exists(ctx, accountID, msg.ID)
+	already, err := s.messageRepo.Exists(ctx, accountID, persistedMessageID)
 	if err != nil {
 		return false, 0, 0, fmt.Errorf("查询邮件处理状态失败: %w", err)
 	}
 	if already {
+		// 上一次已落库但标已读失败时，邮件仍会出现在未读列表；此处补偿性重试，
+		// 不必重新下载附件。
+		if merr := provider.MarkRead(ctx, token, msg.ID); merr != nil {
+			log.Printf("mailbox retry mark read failed accountId=%d messageId=%s error=%v", accountID, msg.ID, merr)
+		}
 		return false, 0, 0, nil
 	}
 
@@ -379,15 +380,15 @@ func (s *mailboxService) processMessage(ctx context.Context, provider mailbox.Pr
 		if ferr != nil {
 			return false, 0, 0, fmt.Errorf("拉取附件失败: %w", ferr)
 		}
-		imported, skipped, err = s.importAttachments(ctx, msg, mailbox.FilterAttachments(attachments, s.allowedExt))
+		imported, skipped, err = s.importAttachments(ctx, accountID, persistedMessageID, msg, mailbox.FilterAttachments(attachments, s.allowedExt))
 		if err != nil {
-			// 不登记 mailbox_messages：下次扫描重试，已入库附件靠 file_hash 跳过。
+			// 不登记为已处理：下次扫描重试，已入库附件会靠附件幂等键跳过。
 			return false, 0, 0, err
 		}
 	}
 
 	// 附件全部处理成功后再登记，作为后续扫描的幂等去重记录。
-	if _, err := s.messageRepo.MarkProcessed(ctx, accountID, msg.ID); err != nil {
+	if _, err := s.messageRepo.MarkProcessed(ctx, accountID, persistedMessageID); err != nil {
 		return false, 0, 0, fmt.Errorf("登记已处理邮件失败: %w", err)
 	}
 
@@ -398,62 +399,53 @@ func (s *mailboxService) processMessage(ctx context.Context, provider mailbox.Pr
 	return true, imported, skipped, nil
 }
 
-// freshAttachment 是通过 hash 去重后确实需要入库的附件（附带算好的 hash）。
-type freshAttachment struct {
-	att      mailbox.Attachment
-	fileHash string
-}
-
-// importAttachments 导入一封邮件里过滤后的附件：先按 file hash 整体去重，
-// 再对同一发件人只解析一次候选人（命中 email 挂旧候选人，否则用首份 fresh 简历新建），
-// 其余附件挂到同一候选人。返回新建简历数与因 hash 命中跳过的附件数。
-func (s *mailboxService) importAttachments(ctx context.Context, msg mailbox.Message, attachments []mailbox.Attachment) (imported int, skipped int, err error) {
-	fresh := make([]freshAttachment, 0, len(attachments))
-	for _, att := range attachments {
+// importAttachments 对每个简历附件构造独立的 candidate 壳：
+// 文件名 -> candidate.name，原文件 -> R2，随后在一个 PostgreSQL 事务中写入
+// candidate + resume 元数据 + mailbox_message_attachment。附件级幂等确保失败重试
+// 不会重复建候选人；不同邮件即使文件内容相同也各自保留一份投递记录。
+func (s *mailboxService) importAttachments(ctx context.Context, accountID int64, persistedMessageID string, msg mailbox.Message, attachments []mailbox.Attachment) (imported int, skipped int, err error) {
+	for index, att := range attachments {
 		fileHash := attachmentHash(att.Data)
-		existing, ferr := s.resumeRepo.FindByFileHash(ctx, fileHash)
-		if ferr != nil {
-			return imported, skipped, fmt.Errorf("查询文件 hash 失败: %w", ferr)
-		}
-		if existing != nil {
-			skipped++
-			continue
-		}
-		fresh = append(fresh, freshAttachment{att: att, fileHash: fileHash})
-	}
-	if len(fresh) == 0 {
-		return 0, skipped, nil
-	}
+		attachmentKey := attachmentIdentity(att, index, fileHash)
+		objectKey := attachmentObjectKey(accountID, persistedMessageID, attachmentKey, att)
+		contentType := filemime.Normalize(att.ContentType, att.Filename)
 
-	// 同一发件人只解析一次候选人：省重复查询，也避免多附件建出多个候选人。
-	candidate, err := s.candidateRepo.FindByEmail(ctx, msg.FromEmail)
-	if err != nil {
-		return imported, skipped, fmt.Errorf("按邮箱查候选人失败: %w", err)
-	}
-	var candidateID int64
-	if candidate != nil {
-		candidateID = candidate.ID
-	}
-
-	for _, f := range fresh {
-		uploaded, uerr := s.uploader.UploadBytes(ctx, attachmentObjectKey(f.att), f.att.Data, f.att.ContentType)
+		// 先构造候选人壳，再上传原始文件；候选人和简历会在上传成功后一起落库。
+		candidate := buildCandidate(deriveCandidateName(att.Filename), msg.FromEmail)
+		uploaded, uerr := s.uploader.UploadBytes(ctx, objectKey, att.Data, contentType)
 		if uerr != nil {
 			return imported, skipped, fmt.Errorf("上传附件失败: %w", uerr)
 		}
-		resume := s.buildResume(f.att, f.fileHash, uploaded)
 
-		if candidateID == 0 {
-			// 尚无候选人：用第一份 fresh 简历原子创建候选人+简历，名字取该附件文件名。
-			name := deriveCandidateName(f.att.Filename, msg.FromName, msg.FromEmail)
-			newCandidate := buildCandidate(name, msg.FromEmail)
-			if cerr := s.candidateRepo.CreateWithResume(ctx, newCandidate, resume); cerr != nil {
-				return imported, skipped, fmt.Errorf("创建候选人及简历失败: %w", cerr)
-			}
-			candidateID = newCandidate.ID // 后续 fresh 附件挂到这个新候选人
-		} else {
-			if cerr := s.candidateRepo.CreateResumeForCandidate(ctx, candidateID, resume, CandidateStatusPendingReview); cerr != nil {
-				return imported, skipped, fmt.Errorf("为候选人创建简历失败: %w", cerr)
-			}
+		resume := s.buildResume(att, fileHash, uploaded)
+		created, perr := s.messageRepo.PersistAttachment(
+			ctx,
+			repository.MailboxMessageMetadata{
+				AccountID: accountID,
+				MessageID: persistedMessageID,
+				FromEmail: normalizeMailboxShortText(msg.FromEmail),
+				FromName:  normalizeMailboxShortText(msg.FromName),
+				Subject:   msg.Subject,
+			},
+			repository.MailboxAttachmentMetadata{
+				AttachmentKey:   attachmentKey,
+				AttachmentIndex: int32(index),
+				Filename:        mailboxFilename(att.Filename),
+				ContentType:     normalizeMailboxShortText(contentType),
+				FileHash:        fileHash,
+				ObjectKey:       uploaded.Key,
+			},
+			candidate,
+			resume,
+		)
+		if perr != nil {
+			// objectKey 是由邮件 + 附件标识确定的。保留对象可使下一次扫描安全地
+			// 覆盖/复用它；这样也避免跨进程重试时误删另一个成功事务的原文件。
+			return imported, skipped, fmt.Errorf("持久化候选人、简历及邮件记录失败: %w", perr)
+		}
+		if !created {
+			skipped++
+			continue
 		}
 		imported++
 	}
@@ -462,8 +454,8 @@ func (s *mailboxService) importAttachments(ctx context.Context, msg mailbox.Mess
 
 // buildResume 由附件与上传结果组装一条待入库的简历（先只存文件不解析）。
 func (s *mailboxService) buildResume(att mailbox.Attachment, fileHash string, uploaded *storage.UploadResult) *model.Resume {
-	filename := att.Filename
-	fileType := strings.TrimPrefix(att.Ext(), ".")
+	filename := mailboxFilename(att.Filename)
+	fileType := filemime.Normalize(att.ContentType, filename)
 	size := int64(len(att.Data))
 	return &model.Resume{
 		OriginalFilename: &filename,
@@ -476,9 +468,35 @@ func (s *mailboxService) buildResume(att mailbox.Attachment, fileHash string, up
 	}
 }
 
-// attachmentObjectKey 生成附件在对象存储中的 key，与上传简历的命名一致（resumes/<uuid><ext>）。
-func attachmentObjectKey(att mailbox.Attachment) string {
-	return "resumes/" + uuid.NewString() + att.Ext()
+// attachmentIdentity 返回邮件内附件的稳定幂等标识。优先用 Provider 标识；
+// 没有时以附件序号 + 内容 hash 兜底，保证同一封邮件重试时仍可识别。
+func attachmentIdentity(att mailbox.Attachment, index int, fileHash string) string {
+	if id := strings.TrimSpace(att.ID); id != "" {
+		// Provider attachment IDs are not needed outside the provider API. Keep
+		// a fixed-size digest in PostgreSQL so its unique B-tree index remains
+		// safe even if a future provider emits a very long identifier.
+		return "provider-sha256:" + attachmentHash([]byte(id))
+	}
+	return fmt.Sprintf("index:%d:sha256:%s", index, fileHash)
+}
+
+// mailboxMessagePersistenceID bounds an untrusted provider message ID before
+// it reaches the indexed varchar column. Gmail IDs are far shorter and remain
+// unchanged; a future oversized ID gets a stable digest instead.
+func mailboxMessagePersistenceID(messageID string) string {
+	messageID = strings.ToValidUTF8(strings.TrimSpace(messageID), "")
+	if len([]rune(messageID)) <= 512 {
+		return messageID
+	}
+	return "sha256:" + attachmentHash([]byte(messageID))
+}
+
+// attachmentObjectKey 生成确定性的 R2 key。它不包含不可信的文件名，
+// 重试同一邮件附件会复用同一对象，不同邮件附件不会相互覆盖。
+func attachmentObjectKey(accountID int64, messageID, attachmentKey string, att mailbox.Attachment) string {
+	scope := fmt.Sprintf("%d:%s:%s", accountID, messageID, attachmentKey)
+	sum := sha256.Sum256([]byte(scope))
+	return fmt.Sprintf("resumes/mailbox/%s%s", hex.EncodeToString(sum[:]), att.Ext())
 }
 
 // attachmentHash 计算附件字节的 SHA-256，返回 64 位十六进制串（对齐 resumes.file_hash）。
@@ -495,52 +513,58 @@ func buildCandidate(name, fromEmail string) *model.Candidate {
 		Status: CandidateStatusPendingReview,
 		Source: &source,
 	}
-	if email := strings.TrimSpace(fromEmail); email != "" {
+	// 邮件附件文件名只用于候选人壳的 name，绝不推断当前职位、岗位 ID 或岗位分类。
+	// 这些字段保持 NULL，后续仅由人工编辑或可信的解析结果填写。
+	if email := normalizeMailboxShortText(fromEmail); email != "" {
 		candidate.Email = &email
 	}
 	return candidate
 }
 
-// deriveCandidateName 派生候选人姓名：优先用文件名（去扩展名），
-// 无意义（如 resume/简历 等通用词）时回退发件人显示名，再回退邮箱前缀。
-func deriveCandidateName(filename, fromName, fromEmail string) string {
-	base := strings.TrimSpace(strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename)))
-	if isMeaningfulName(base) {
+// deriveCandidateName 直接以简历附件名（去扩展名）作为候选人壳名称。
+// 真实姓名的补全/校正留给后续解析或人工编辑，避免邮件导入阶段依赖解析结果。
+func deriveCandidateName(filename string) string {
+	baseFilename := mailboxFilename(filename)
+	base := strings.TrimSpace(strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename)))
+	if base != "" && base != "." {
 		return base
 	}
-	if name := strings.TrimSpace(fromName); name != "" {
-		return name
-	}
-	if prefix := emailLocalPart(fromEmail); prefix != "" {
-		return prefix
-	}
-	return base
+	return "未命名候选人"
 }
 
-// meaninglessNames 是不具区分度的通用文件名，命中则不作为候选人姓名。
-var meaninglessNames = map[string]struct{}{
-	"resume":   {},
-	"cv":       {},
-	"简历":       {},
-	"个人简历":     {},
-	"my resume": {},
+// mailboxFilename strips any path supplied by the mail provider and bounds
+// the result to the varchar(255) columns used by resume and attachment metadata.
+func mailboxFilename(filename string) string {
+	base := filepath.Base(strings.ToValidUTF8(strings.TrimSpace(filename), ""))
+	if base == "." {
+		return ""
+	}
+	if len([]rune(base)) <= maxMailboxShortTextLength {
+		return base
+	}
+
+	// Preserve the extension when shortening a long filename, so a stored
+	// original filename still tells operators which file type was imported.
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	maxStemLength := maxMailboxShortTextLength - len([]rune(ext))
+	if maxStemLength <= 0 {
+		return normalizeMailboxShortText(base)
+	}
+	return truncateMailboxText(stem, maxStemLength) + ext
 }
 
-func isMeaningfulName(name string) bool {
-	if name == "" {
-		return false
-	}
-	if _, bad := meaninglessNames[strings.ToLower(name)]; bad {
-		return false
-	}
-	return true
+// normalizeMailboxShortText makes untrusted mail header values safe for the
+// varchar(255) persistence columns. PostgreSQL measures VARCHAR in characters,
+// so truncating by runes avoids splitting a UTF-8 character.
+func normalizeMailboxShortText(value string) string {
+	return truncateMailboxText(strings.ToValidUTF8(strings.TrimSpace(value), ""), maxMailboxShortTextLength)
 }
 
-// emailLocalPart 取邮箱 @ 之前的部分（去空白）。无 @ 或为空时返回空串。
-func emailLocalPart(email string) string {
-	email = strings.TrimSpace(email)
-	if at := strings.IndexByte(email, '@'); at > 0 {
-		return email[:at]
+func truncateMailboxText(value string, maxLength int) string {
+	runes := []rune(value)
+	if len(runes) <= maxLength {
+		return value
 	}
-	return ""
+	return string(runes[:maxLength])
 }

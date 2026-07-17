@@ -85,6 +85,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	applicationRepo := repository.NewApplicationRepository(db)
 	screeningTaskRepo := repository.NewScreeningTaskRepository(db)
+	dashboardRepo := repository.NewDashboardRepository(db)
 	screeningTaskService := service.NewScreeningTaskService(screeningTaskRepo, service.ScreeningTaskDependencies{
 		JobRepo:         jobRepo,
 		ResumeRepo:      resumeRepo,
@@ -102,6 +103,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	candidateHandler := handler.NewCandidateHandler(candidateService, resumeUploader)
 	screeningTaskHandler := handler.NewScreeningTaskHandler(screeningTaskService)
 	resumeHandler := handler.NewResumeHandler(resumeService, resumeUploader)
+	dashboardHandler := handler.NewDashboardHandler(service.NewDashboardService(dashboardRepo))
 
 	applicationService := service.NewApplicationService(applicationRepo, jobRepo, resumeRepo, candidateRepo)
 	applicationHandler := handler.NewApplicationHandler(applicationService)
@@ -128,15 +130,13 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		mailboxScanTaskRepo := repository.NewMailboxScanTaskRepository(db)
 
 		mailboxService := service.NewMailboxService(service.MailboxDependencies{
-			AccountRepo:   mailboxAccountRepo,
-			MessageRepo:   mailboxMessageRepo,
-			ScanTaskRepo:  mailboxScanTaskRepo,
-			CandidateRepo: candidateRepo,
-			ResumeRepo:    resumeRepo,
-			Uploader:      resumeUploader,
-			Providers:     providers,
-			AllowedExt:    cfg.MailboxAllowedExt,
-			WorkerCount:   cfg.MailboxScanWorkerCount,
+			AccountRepo:  mailboxAccountRepo,
+			MessageRepo:  mailboxMessageRepo,
+			ScanTaskRepo: mailboxScanTaskRepo,
+			Uploader:     resumeUploader,
+			Providers:    providers,
+			AllowedExt:   cfg.MailboxAllowedExt,
+			WorkerCount:  cfg.MailboxScanWorkerCount,
 		})
 
 		mailboxHandler = handler.NewMailboxHandler(
@@ -221,6 +221,7 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		private.POST("/applications", applicationHandler.Create)
 
 		private.GET("/operation-logs", operationLogHandler.List)
+		private.GET("/dashboard/summary", dashboardHandler.Summary)
 
 		// 邮箱扫描路由
 		if mailboxHandler != nil {

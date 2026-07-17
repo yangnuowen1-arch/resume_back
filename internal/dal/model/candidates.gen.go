@@ -13,8 +13,8 @@ const TableNameCandidate = "candidates"
 // Candidate mapped from table <candidates>
 type Candidate struct {
 	ID                      int64     `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true" json:"id"`
-	Name                    *string   `gorm:"column:name;type:character varying(100)" json:"name"`
-	Email                   *string   `gorm:"column:email;type:character varying(100)" json:"email"`
+	Name                    *string   `gorm:"column:name;type:character varying(255)" json:"name"`
+	Email                   *string   `gorm:"column:email;type:character varying(255)" json:"email"`
 	Phone                   *string   `gorm:"column:phone;type:character varying(50)" json:"phone"`
 	Gender                  *string   `gorm:"column:gender;type:character varying(20)" json:"gender"`
 	CurrentCompany          *string   `gorm:"column:current_company;type:character varying(100)" json:"current_company"`

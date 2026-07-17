@@ -29,6 +29,7 @@ func newScreeningResult(db *gorm.DB, opts ...gen.DOOption) screeningResult {
 	_screeningResult.ALL = field.NewAsterisk(tableName)
 	_screeningResult.ID = field.NewInt64(tableName, "id")
 	_screeningResult.ApplicationID = field.NewInt64(tableName, "application_id")
+	_screeningResult.CandidateName = field.NewString(tableName, "candidate_name")
 	_screeningResult.Score = field.NewFloat64(tableName, "score")
 	_screeningResult.MatchLevel = field.NewString(tableName, "match_level")
 	_screeningResult.Recommendation = field.NewString(tableName, "recommendation")
@@ -57,6 +58,7 @@ type screeningResult struct {
 	ALL                 field.Asterisk
 	ID                  field.Int64
 	ApplicationID       field.Int64
+	CandidateName       field.String
 	Score               field.Float64
 	MatchLevel          field.String
 	Recommendation      field.String
@@ -91,6 +93,7 @@ func (s *screeningResult) updateTableName(table string) *screeningResult {
 	s.ALL = field.NewAsterisk(table)
 	s.ID = field.NewInt64(table, "id")
 	s.ApplicationID = field.NewInt64(table, "application_id")
+	s.CandidateName = field.NewString(table, "candidate_name")
 	s.Score = field.NewFloat64(table, "score")
 	s.MatchLevel = field.NewString(table, "match_level")
 	s.Recommendation = field.NewString(table, "recommendation")
@@ -135,9 +138,10 @@ func (s *screeningResult) GetFieldByName(fieldName string) (field.OrderExpr, boo
 }
 
 func (s *screeningResult) fillFieldMap() {
-	s.fieldMap = make(map[string]field.Expr, 18)
+	s.fieldMap = make(map[string]field.Expr, 19)
 	s.fieldMap["id"] = s.ID
 	s.fieldMap["application_id"] = s.ApplicationID
+	s.fieldMap["candidate_name"] = s.CandidateName
 	s.fieldMap["score"] = s.Score
 	s.fieldMap["match_level"] = s.MatchLevel
 	s.fieldMap["recommendation"] = s.Recommendation

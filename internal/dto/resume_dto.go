@@ -20,6 +20,7 @@ type ResumeResponse struct {
 	OriginalFilename *string    `json:"originalFilename"`
 	FileKey          *string    `json:"fileKey,omitempty"`
 	FileURL          *string    `json:"fileUrl"`
+	PreviewURL        *string    `json:"previewUrl,omitempty"`
 	FileType         *string    `json:"fileType"`
 	FileSize         *int64     `json:"fileSize"`
 	RawText          *string    `json:"rawText"`

@@ -12,8 +12,10 @@ import (
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
 	"github.com/yangnuowen1-arch/resume_back/internal/dify"
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
+	"github.com/yangnuowen1-arch/resume_back/internal/filemime"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
 	"github.com/yangnuowen1-arch/resume_back/internal/storage"
+	"github.com/yangnuowen1-arch/resume_back/internal/timeutil"
 	"gorm.io/gorm"
 )
 
@@ -224,6 +226,7 @@ func (s *screeningTaskService) RunResumeScreening(ctx context.Context, req dto.R
 		ApplicationID: application.ID,
 		Status:        ScreeningTaskStatusQueued,
 		CreatedBy:     &userID,
+		CreatedAt:     timeutil.Now(),
 	}
 	if err := s.repo.Create(ctx, screeningResult); err != nil {
 		return nil, err
@@ -294,10 +297,11 @@ func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context,
 	difyStart := time.Now()
 	log.Printf("screening task dify screening started screeningResultId=%d resumeId=%d jobId=%d",
 		screeningJob.ScreeningResultID, screeningJob.ResumeID, screeningJob.JobID)
+	filename := stringValue(resume.OriginalFilename, "resume")
 	difyResult, err := s.difyClient.RunResumeScreening(ctx, dify.RunResumeScreeningRequest{
 		File:           object.Body,
-		Filename:       stringValue(resume.OriginalFilename, "resume"),
-		ContentType:    firstNonEmpty(stringValue(resume.FileType, ""), object.ContentType, "application/octet-stream"),
+		Filename:       filename,
+		ContentType:    filemime.NormalizeAny(filename, stringValue(resume.FileType, ""), object.ContentType),
 		JobContext:     jobContext.JobContext,
 		OutputLanguage: firstNonEmpty(strings.TrimSpace(screeningJob.OutputLanguage), "Chinese"),
 		User:           firstNonEmpty(s.difyUser, "resume_back"),
@@ -324,6 +328,7 @@ func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context,
 
 	score := aiOutput.Score
 	if err := s.repo.MarkSuccess(ctx, screeningJob.ScreeningResultID, repository.ScreeningResultSuccessUpdate{
+		CandidateName:       trimOptionalString(aiOutput.CandidateName),
 		Score:               &score,
 		MatchLevel:          trimOptionalString(aiOutput.MatchLevel),
 		Recommendation:      trimOptionalString(aiOutput.Recommendation),
@@ -380,18 +385,32 @@ func (s *screeningTaskService) Detail(ctx context.Context, id int64) (*dto.Scree
 		}
 		return nil, err
 	}
+	if item == nil {
+		return nil, ErrScreeningTaskNotFound
+	}
+
+	rawOutput := extractStoredScreeningOutput(item.RawResponse)
+	requirements := parseStoredRequirements(item.Requirements)
+	requirements = verifyRequirementEvidence(requirements, item.ResumeText)
+	markdownReport := trimOptionalString(rawOutput.MarkdownReport)
+	summary := firstOptionalString(item.Summary, rawOutput.Summary)
+	matchLevel := firstOptionalString(item.MatchLevel, rawOutput.MatchLevel)
+	recommendation := firstOptionalString(item.Recommendation, rawOutput.Recommendation)
 
 	detail := &dto.ScreeningTaskDetailResponse{
 		ID:             item.ID,
+		Status:         item.Status,
+		ErrorMessage:   trimOptionalString(item.ErrorMessage),
 		CandidateName:  item.CandidateName,
 		Position:       item.Position,
 		AIScore:        item.AIScore,
-		MatchLevel:     item.MatchLevel,
-		Recommendation: item.Recommendation,
-		Summary:        item.Summary,
-		MarkdownReport: extractMarkdownReport(item.RawResponse),
+		MatchLevel:     matchLevel,
+		Recommendation: recommendation,
+		Summary:        summary,
+		MarkdownReport: markdownReport,
 		ResumeText:     item.ResumeText,
-		Requirements:   parseStoredRequirements(item.Requirements),
+		Requirements:   requirements,
+		Sections:       buildScreeningTaskDetailSections(item, rawOutput, requirements, markdownReport),
 	}
 
 	return detail, nil
@@ -399,20 +418,31 @@ func (s *screeningTaskService) Detail(ctx context.Context, id int64) (*dto.Scree
 
 // extractMarkdownReport 从 raw_response JSON 的 output.markdown_report 取出报告文本。
 func extractMarkdownReport(rawResponse *string) *string {
+	return trimOptionalString(extractStoredScreeningOutput(rawResponse).MarkdownReport)
+}
+
+// extractStoredScreeningOutput 从当前 raw_response envelope（或兼容的旧版直出 JSON）取出 AI 输出。
+func extractStoredScreeningOutput(rawResponse *string) screeningAIOutput {
 	if rawResponse == nil || strings.TrimSpace(*rawResponse) == "" {
-		return nil
+		return screeningAIOutput{}
 	}
 
 	var payload struct {
-		Output struct {
-			MarkdownReport *string `json:"markdown_report"`
-		} `json:"output"`
+		Output json.RawMessage `json:"output"`
 	}
-	if err := json.Unmarshal([]byte(*rawResponse), &payload); err != nil {
-		return nil
+	if err := json.Unmarshal([]byte(*rawResponse), &payload); err == nil && len(payload.Output) > 0 && string(payload.Output) != "null" {
+		var output screeningAIOutput
+		if err := json.Unmarshal(payload.Output, &output); err == nil {
+			return output
+		}
 	}
 
-	return trimOptionalString(payload.Output.MarkdownReport)
+	var output screeningAIOutput
+	if err := json.Unmarshal([]byte(*rawResponse), &output); err != nil {
+		return screeningAIOutput{}
+	}
+
+	return output
 }
 
 // parseStoredRequirements 反序列化已落库的 requirements JSON，缺失时返回空数组（前端走降级态）。
@@ -429,7 +459,241 @@ func parseStoredRequirements(stored *string) []dto.ScreeningRequirement {
 		return []dto.ScreeningRequirement{}
 	}
 
+	for index := range requirements {
+		requirements[index] = normalizeStoredRequirement(requirements[index], index)
+	}
+
 	return requirements
+}
+
+// buildScreeningTaskDetailSections 将数据库记录和 AI 原始输出组装为页面可直接消费的模块。
+// 平铺字段仍在 Detail 响应中保留，sections 是新页面的主数据源。
+func buildScreeningTaskDetailSections(
+	item *repository.ScreeningTaskDetailItem,
+	rawOutput screeningAIOutput,
+	requirements []dto.ScreeningRequirement,
+	markdownReport *string,
+) dto.ScreeningTaskDetailSections {
+	matchedItems := make([]dto.ScreeningRequirement, 0)
+	attentionItems := make([]dto.ScreeningRequirement, 0)
+	for _, requirement := range requirements {
+		switch requirement.Status {
+		case "pass":
+			matchedItems = append(matchedItems, requirement)
+		default:
+			attentionItems = append(attentionItems, requirement)
+		}
+	}
+
+	summary := firstOptionalString(item.Summary, rawOutput.Summary)
+	matchLevel := firstOptionalString(item.MatchLevel, rawOutput.MatchLevel)
+	recommendation := firstOptionalString(item.Recommendation, rawOutput.Recommendation)
+	strengths := firstNonEmptyStringSlice(parseStoredStringSlice(item.Strengths), rawOutput.Strengths)
+	weaknesses := firstNonEmptyStringSlice(parseStoredStringSlice(item.Weaknesses), rawOutput.Weaknesses)
+	risks := firstNonEmptyStringSlice(parseStoredStringSlice(item.Risks), rawOutput.Risks)
+	interviewQuestions := normalizedStringSlice(rawOutput.SuggestedInterviewQuestions)
+
+	textAvailable := item.ResumeText != nil && strings.TrimSpace(*item.ResumeText) != ""
+	highlightAvailable := textAvailable && hasHighlightableEvidence(requirements)
+
+	return dto.ScreeningTaskDetailSections{
+		Summary: dto.ScreeningSummarySection{
+			Text: summary,
+		},
+		CandidateInfo: dto.ScreeningCandidateInfoSection{
+			Name:              item.CandidateName,
+			AppliedPosition:   item.Position,
+			CurrentTitle:      firstOptionalString(rawOutput.CurrentTitle, item.CandidateCurrentTitle),
+			YearsOfExperience: firstOptionalFloat(rawOutput.YearsOfExperience, item.CandidateYearsOfExperience),
+			HighestEducation:  firstOptionalString(rawOutput.HighestEducation, item.CandidateHighestEducation),
+			TaskStatus:        item.Status,
+			TaskErrorMessage:  trimOptionalString(item.ErrorMessage),
+		},
+		Assessment: dto.ScreeningAssessmentSection{
+			Score:          item.AIScore,
+			MatchLevel:     matchLevel,
+			Recommendation: recommendation,
+		},
+		RequirementsComparison: dto.ScreeningRequirementsComparisonSection{
+			Items:          requirements,
+			MatchedItems:   matchedItems,
+			AttentionItems: attentionItems,
+		},
+		CandidateAnalysis: dto.ScreeningCandidateAnalysisSection{
+			Strengths:                   strengths,
+			Weaknesses:                  weaknesses,
+			Risks:                       risks,
+			SuggestedInterviewQuestions: interviewQuestions,
+		},
+		FinalRecommendation: dto.ScreeningFinalRecommendationSection{
+			Recommendation: recommendation,
+			Text:           summary,
+		},
+		Resume: dto.ScreeningResumeSection{
+			Text:               item.ResumeText,
+			TextAvailable:      textAvailable,
+			HighlightAvailable: highlightAvailable,
+		},
+		Fallback: dto.ScreeningFallbackSection{
+			MarkdownReport:            markdownReport,
+			ShouldUseMarkdownFallback: item.Status == ScreeningTaskStatusSuccess && len(requirements) == 0 && markdownReport != nil,
+		},
+	}
+}
+
+func normalizeStoredRequirement(requirement dto.ScreeningRequirement, index int) dto.ScreeningRequirement {
+	requirement.ID = requirementID(requirement.ID, index)
+	requirement.Label = strings.TrimSpace(requirement.Label)
+	requirement.Status = normalizeRequirementStatus(requirement.Status)
+	requirement.Comment = trimOptionalString(requirement.Comment)
+	if requirement.Evidence == nil {
+		requirement.Evidence = []dto.RequirementEvidence{}
+	}
+	requirement.CandidateSituation = firstOptionalString(
+		trimOptionalString(requirement.CandidateSituation),
+		candidateSituationFromEvidence(requirement.Evidence, requirement.Comment),
+	)
+	return requirement
+}
+
+func candidateSituationFromEvidence(evidence []dto.RequirementEvidence, fallback *string) *string {
+	parts := make([]string, 0, len(evidence))
+	for _, item := range evidence {
+		text := strings.TrimSpace(item.Text)
+		if text != "" {
+			parts = append(parts, text)
+		}
+	}
+	if len(parts) > 0 {
+		value := strings.Join(parts, "；")
+		return &value
+	}
+
+	return trimOptionalString(fallback)
+}
+
+func parseStoredStringSlice(stored *string) []string {
+	if stored == nil || strings.TrimSpace(*stored) == "" {
+		return []string{}
+	}
+
+	var values []string
+	if err := json.Unmarshal([]byte(*stored), &values); err != nil || values == nil {
+		return []string{}
+	}
+
+	return normalizedStringSlice(values)
+}
+
+func normalizedStringSlice(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func firstNonEmptyStringSlice(values ...[]string) []string {
+	for _, value := range values {
+		value = normalizedStringSlice(value)
+		if len(value) > 0 {
+			return value
+		}
+	}
+
+	return []string{}
+}
+
+func firstOptionalString(values ...*string) *string {
+	for _, value := range values {
+		if value = trimOptionalString(value); value != nil {
+			return value
+		}
+	}
+
+	return nil
+}
+
+func firstOptionalFloat(values ...*float64) *float64 {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+
+	return nil
+}
+
+func hasHighlightableEvidence(requirements []dto.ScreeningRequirement) bool {
+	for _, requirement := range requirements {
+		for _, evidence := range requirement.Evidence {
+			if strings.TrimSpace(evidence.Text) != "" {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// verifyRequirementEvidence 兼容历史 requirements：每次返回详情前都以 resumeText 复核证据，
+// 并重新计算前端使用的 UTF-16 偏移。这样旧数据也不会返回不可定位或伪造的证据。
+func verifyRequirementEvidence(requirements []dto.ScreeningRequirement, resumeText *string) []dto.ScreeningRequirement {
+	if len(requirements) == 0 {
+		return []dto.ScreeningRequirement{}
+	}
+
+	verifiedRequirements := make([]dto.ScreeningRequirement, 0, len(requirements))
+	text := ""
+	if resumeText != nil {
+		text = *resumeText
+	}
+
+	for _, requirement := range requirements {
+		candidateSituation := trimOptionalString(requirement.CandidateSituation)
+		verifiedEvidence := make([]dto.RequirementEvidence, 0, len(requirement.Evidence))
+		searchFrom := 0
+		if strings.TrimSpace(text) != "" {
+			for _, evidence := range requirement.Evidence {
+				if strings.TrimSpace(evidence.Text) == "" {
+					continue
+				}
+
+				startAt := min(searchFrom, len(text))
+				idx := strings.Index(text[startAt:], evidence.Text)
+				if idx < 0 {
+					idx = strings.Index(text, evidence.Text)
+					startAt = 0
+				}
+				if idx < 0 {
+					continue
+				}
+
+				byteStart := startAt + idx
+				byteEnd := byteStart + len(evidence.Text)
+				start := utf16CodeUnitOffset(text, byteStart)
+				end := utf16CodeUnitOffset(text, byteEnd)
+				searchFrom = byteEnd
+				verifiedEvidence = append(verifiedEvidence, dto.RequirementEvidence{
+					Text:  evidence.Text,
+					Start: &start,
+					End:   &end,
+				})
+			}
+		}
+
+		requirement.Evidence = verifiedEvidence
+		if candidateSituation != nil {
+			requirement.CandidateSituation = candidateSituation
+		} else {
+			requirement.CandidateSituation = candidateSituationFromEvidence(verifiedEvidence, requirement.Comment)
+		}
+		verifiedRequirements = append(verifiedRequirements, requirement)
+	}
+
+	return verifiedRequirements
 }
 
 func normalizeScreeningTaskQuery(query dto.ScreeningTaskQuery) dto.ScreeningTaskQuery {
@@ -451,30 +715,31 @@ func (s *screeningTaskService) markRunFailed(ctx context.Context, id int64, mess
 }
 
 type screeningAIOutput struct {
-	CandidateName               *string       `json:"candidate_name"`
-	CurrentTitle                *string       `json:"current_title"`
-	YearsOfExperience           *float64      `json:"years_of_experience"`
-	HighestEducation            *string       `json:"highest_education"`
-	Score                       float64       `json:"score"`
-	MatchLevel                  *string       `json:"match_level"`
-	Recommendation              *string       `json:"recommendation"`
-	Summary                     *string       `json:"summary"`
-	MatchedRequirements         []interface{} `json:"matched_requirements"`
-	MissingRequirements         []interface{} `json:"missing_requirements"`
+	CandidateName               *string         `json:"candidate_name"`
+	CurrentTitle                *string         `json:"current_title"`
+	YearsOfExperience           *float64        `json:"years_of_experience"`
+	HighestEducation            *string         `json:"highest_education"`
+	Score                       float64         `json:"score"`
+	MatchLevel                  *string         `json:"match_level"`
+	Recommendation              *string         `json:"recommendation"`
+	Summary                     *string         `json:"summary"`
+	MatchedRequirements         []interface{}   `json:"matched_requirements"`
+	MissingRequirements         []interface{}   `json:"missing_requirements"`
 	Requirements                []aiRequirement `json:"requirements"`
-	Strengths                   []string      `json:"strengths"`
-	Weaknesses                  []string      `json:"weaknesses"`
-	Risks                       []string      `json:"risks"`
-	SuggestedInterviewQuestions []string      `json:"suggested_interview_questions"`
-	MarkdownReport              *string       `json:"markdown_report"`
+	Strengths                   []string        `json:"strengths"`
+	Weaknesses                  []string        `json:"weaknesses"`
+	Risks                       []string        `json:"risks"`
+	SuggestedInterviewQuestions []string        `json:"suggested_interview_questions"`
+	MarkdownReport              *string         `json:"markdown_report"`
 }
 
 type aiRequirement struct {
-	ID       interface{}     `json:"id"`
-	Label    string          `json:"label"`
-	Status   string          `json:"status"`
-	Comment  *string         `json:"comment"`
-	Evidence []aiEvidence    `json:"evidence"`
+	ID                 interface{}  `json:"id"`
+	Label              string       `json:"label"`
+	CandidateSituation *string      `json:"candidate_situation"`
+	Status             string       `json:"status"`
+	Comment            *string      `json:"comment"`
+	Evidence           []aiEvidence `json:"evidence"`
 }
 
 type aiEvidence struct {
@@ -551,7 +816,7 @@ func normalizeRequirementStatus(status string) string {
 }
 
 // buildRequirementsJSON 将 Dify 输出的 requirements 归一化为前端 DTO 结构，
-// 并基于简历原文用 strings.Index 计算 evidence 的 start/end，保证下标准确。
+// 并基于简历原文用 strings.Index 校验证据、计算前端 JavaScript 可直接使用的 UTF-16 start/end。
 // 没有 requirements 时返回 nil（列保持空，前端走降级态）。
 func buildRequirementsJSON(items []aiRequirement, resumeText string) *string {
 	if len(items) == 0 {
@@ -573,31 +838,41 @@ func buildRequirementsJSON(items []aiRequirement, resumeText string) *string {
 				continue
 			}
 
-			start, end := ev.Start, ev.End
-			if resumeText != "" {
-				if idx := strings.Index(resumeText[min(searchFrom, len(resumeText)):], text); idx >= 0 {
-					absStart := min(searchFrom, len(resumeText)) + idx
-					absEnd := absStart + len(text)
-					start, end = &absStart, &absEnd
-					searchFrom = absEnd
-				} else if idx := strings.Index(resumeText, text); idx >= 0 {
-					absStart := idx
-					absEnd := absStart + len(text)
-					start, end = &absStart, &absEnd
-				} else {
-					start, end = nil, nil
-				}
+			// 没有同源简历原文时无法验证「逐字一致」约束，不能向前端返回未经验证的证据。
+			if strings.TrimSpace(resumeText) == "" {
+				continue
 			}
 
-			evidence = append(evidence, dto.RequirementEvidence{Text: text, Start: start, End: end})
+			startAt := min(searchFrom, len(resumeText))
+			idx := strings.Index(resumeText[startAt:], text)
+			if idx < 0 {
+				idx = strings.Index(resumeText, text)
+				startAt = 0
+			}
+			if idx < 0 {
+				continue
+			}
+
+			byteStart := startAt + idx
+			byteEnd := byteStart + len(text)
+			start := utf16CodeUnitOffset(resumeText, byteStart)
+			end := utf16CodeUnitOffset(resumeText, byteEnd)
+			searchFrom = byteEnd
+			evidence = append(evidence, dto.RequirementEvidence{Text: text, Start: &start, End: &end})
 		}
+		comment := trimOptionalString(item.Comment)
+		candidateSituation := firstOptionalString(
+			item.CandidateSituation,
+			candidateSituationFromEvidence(evidence, comment),
+		)
 
 		requirements = append(requirements, dto.ScreeningRequirement{
-			ID:       requirementID(item.ID, i),
-			Label:    label,
-			Status:   normalizeRequirementStatus(item.Status),
-			Comment:  trimOptionalString(item.Comment),
-			Evidence: evidence,
+			ID:                 requirementID(item.ID, i),
+			Label:              label,
+			CandidateSituation: candidateSituation,
+			Status:             normalizeRequirementStatus(item.Status),
+			Comment:            comment,
+			Evidence:           evidence,
 		})
 	}
 
@@ -606,6 +881,21 @@ func buildRequirementsJSON(items []aiRequirement, resumeText string) *string {
 	}
 
 	return jsonStringPtr(requirements)
+}
+
+// utf16CodeUnitOffset 将 Go 字节偏移换算为 JavaScript 字符串索引（UTF-16 code units）。
+// strings.Index 返回字节偏移；直接将其交给浏览器会导致中文或 emoji 高亮错位。
+func utf16CodeUnitOffset(text string, byteOffset int) int {
+	byteOffset = min(max(byteOffset, 0), len(text))
+	offset := 0
+	for _, r := range text[:byteOffset] {
+		if r > 0xFFFF {
+			offset += 2
+		} else {
+			offset++
+		}
+	}
+	return offset
 }
 
 func requirementID(raw interface{}, index int) string {

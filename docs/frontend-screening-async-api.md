@@ -123,6 +123,8 @@ Optional query params:
 
 Response item shape:
 
+`candidate` and `candidateName` use the linked candidate record when one exists. For screening-only tasks without a candidate association, the backend persists and returns the AI-extracted `screening_results.candidate_name`; it also retains a JSON fallback for legacy rows.
+
 ```json
 {
   "id": 123,
@@ -329,18 +331,19 @@ interface ScreeningTaskItem {
 }
 ```
 
-## Current Limitation
+## Screening Task Detail
 
-The current backend has list polling through:
-
-```http
-GET /api/v1/screening-tasks
-```
-
-There is not yet a dedicated detail endpoint like:
+After a task reaches `success`, fetch its detail with:
 
 ```http
 GET /api/v1/screening-tasks/:id
 ```
 
-If the frontend needs to poll a single task more efficiently or display full detail fields such as `summary` and `markdownReport`, the backend should add a detail endpoint in the next step.
+The response includes `data.sections`, a page-oriented structure for the screening detail view. Use it as the sole source for the structured report; the legacy flat fields remain only for a transition period.
+
+- Render `sections.summary`, `sections.candidateInfo`, `sections.assessment`, and `sections.requirementsComparison` for the main detail page.
+- Render `matchedItems` and `attentionItems` in their separate cards; do not refilter or duplicate them in the requirement table.
+- Render Markdown only when `sections.fallback.shouldUseMarkdownFallback` is `true`, using a safe GFM-capable Markdown renderer.
+- `sections.resume.textAvailable === false` means only that resume-text highlighting is unavailable. It does not require falling back from the structured detail page.
+
+See [screening-detail-visualization-api.md](./screening-detail-visualization-api.md) for the full response contract and TypeScript types.

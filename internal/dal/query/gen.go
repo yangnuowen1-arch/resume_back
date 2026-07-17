@@ -17,71 +17,74 @@ import (
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:              db,
-		Application:     newApplication(db, opts...),
-		Candidate:       newCandidate(db, opts...),
-		Job:             newJob(db, opts...),
-		JobCategory:     newJobCategory(db, opts...),
-		JobMember:       newJobMember(db, opts...),
-		JobTag:          newJobTag(db, opts...),
-		MailboxAccount:  newMailboxAccount(db, opts...),
-		MailboxMessage:  newMailboxMessage(db, opts...),
-		MailboxScanTask: newMailboxScanTask(db, opts...),
-		OperationLog:    newOperationLog(db, opts...),
-		Resume:          newResume(db, opts...),
-		Role:            newRole(db, opts...),
-		ScreeningResult: newScreeningResult(db, opts...),
-		Tag:             newTag(db, opts...),
-		TagGroup:        newTagGroup(db, opts...),
-		User:            newUser(db, opts...),
-		UserRole:        newUserRole(db, opts...),
+		db:                       db,
+		Application:              newApplication(db, opts...),
+		Candidate:                newCandidate(db, opts...),
+		Job:                      newJob(db, opts...),
+		JobCategory:              newJobCategory(db, opts...),
+		JobMember:                newJobMember(db, opts...),
+		JobTag:                   newJobTag(db, opts...),
+		MailboxAccount:           newMailboxAccount(db, opts...),
+		MailboxMessageAttachment: newMailboxMessageAttachment(db, opts...),
+		MailboxMessage:           newMailboxMessage(db, opts...),
+		MailboxScanTask:          newMailboxScanTask(db, opts...),
+		OperationLog:             newOperationLog(db, opts...),
+		Resume:                   newResume(db, opts...),
+		Role:                     newRole(db, opts...),
+		ScreeningResult:          newScreeningResult(db, opts...),
+		Tag:                      newTag(db, opts...),
+		TagGroup:                 newTagGroup(db, opts...),
+		User:                     newUser(db, opts...),
+		UserRole:                 newUserRole(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	Application     application
-	Candidate       candidate
-	Job             job
-	JobCategory     jobCategory
-	JobMember       jobMember
-	JobTag          jobTag
-	MailboxAccount  mailboxAccount
-	MailboxMessage  mailboxMessage
-	MailboxScanTask mailboxScanTask
-	OperationLog    operationLog
-	Resume          resume
-	Role            role
-	ScreeningResult screeningResult
-	Tag             tag
-	TagGroup        tagGroup
-	User            user
-	UserRole        userRole
+	Application              application
+	Candidate                candidate
+	Job                      job
+	JobCategory              jobCategory
+	JobMember                jobMember
+	JobTag                   jobTag
+	MailboxAccount           mailboxAccount
+	MailboxMessageAttachment mailboxMessageAttachment
+	MailboxMessage           mailboxMessage
+	MailboxScanTask          mailboxScanTask
+	OperationLog             operationLog
+	Resume                   resume
+	Role                     role
+	ScreeningResult          screeningResult
+	Tag                      tag
+	TagGroup                 tagGroup
+	User                     user
+	UserRole                 userRole
 }
 
 func (q *Query) Available() bool { return q.db != nil }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:              db,
-		Application:     q.Application.clone(db),
-		Candidate:       q.Candidate.clone(db),
-		Job:             q.Job.clone(db),
-		JobCategory:     q.JobCategory.clone(db),
-		JobMember:       q.JobMember.clone(db),
-		JobTag:          q.JobTag.clone(db),
-		MailboxAccount:  q.MailboxAccount.clone(db),
-		MailboxMessage:  q.MailboxMessage.clone(db),
-		MailboxScanTask: q.MailboxScanTask.clone(db),
-		OperationLog:    q.OperationLog.clone(db),
-		Resume:          q.Resume.clone(db),
-		Role:            q.Role.clone(db),
-		ScreeningResult: q.ScreeningResult.clone(db),
-		Tag:             q.Tag.clone(db),
-		TagGroup:        q.TagGroup.clone(db),
-		User:            q.User.clone(db),
-		UserRole:        q.UserRole.clone(db),
+		db:                       db,
+		Application:              q.Application.clone(db),
+		Candidate:                q.Candidate.clone(db),
+		Job:                      q.Job.clone(db),
+		JobCategory:              q.JobCategory.clone(db),
+		JobMember:                q.JobMember.clone(db),
+		JobTag:                   q.JobTag.clone(db),
+		MailboxAccount:           q.MailboxAccount.clone(db),
+		MailboxMessageAttachment: q.MailboxMessageAttachment.clone(db),
+		MailboxMessage:           q.MailboxMessage.clone(db),
+		MailboxScanTask:          q.MailboxScanTask.clone(db),
+		OperationLog:             q.OperationLog.clone(db),
+		Resume:                   q.Resume.clone(db),
+		Role:                     q.Role.clone(db),
+		ScreeningResult:          q.ScreeningResult.clone(db),
+		Tag:                      q.Tag.clone(db),
+		TagGroup:                 q.TagGroup.clone(db),
+		User:                     q.User.clone(db),
+		UserRole:                 q.UserRole.clone(db),
 	}
 }
 
@@ -95,66 +98,69 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:              db,
-		Application:     q.Application.replaceDB(db),
-		Candidate:       q.Candidate.replaceDB(db),
-		Job:             q.Job.replaceDB(db),
-		JobCategory:     q.JobCategory.replaceDB(db),
-		JobMember:       q.JobMember.replaceDB(db),
-		JobTag:          q.JobTag.replaceDB(db),
-		MailboxAccount:  q.MailboxAccount.replaceDB(db),
-		MailboxMessage:  q.MailboxMessage.replaceDB(db),
-		MailboxScanTask: q.MailboxScanTask.replaceDB(db),
-		OperationLog:    q.OperationLog.replaceDB(db),
-		Resume:          q.Resume.replaceDB(db),
-		Role:            q.Role.replaceDB(db),
-		ScreeningResult: q.ScreeningResult.replaceDB(db),
-		Tag:             q.Tag.replaceDB(db),
-		TagGroup:        q.TagGroup.replaceDB(db),
-		User:            q.User.replaceDB(db),
-		UserRole:        q.UserRole.replaceDB(db),
+		db:                       db,
+		Application:              q.Application.replaceDB(db),
+		Candidate:                q.Candidate.replaceDB(db),
+		Job:                      q.Job.replaceDB(db),
+		JobCategory:              q.JobCategory.replaceDB(db),
+		JobMember:                q.JobMember.replaceDB(db),
+		JobTag:                   q.JobTag.replaceDB(db),
+		MailboxAccount:           q.MailboxAccount.replaceDB(db),
+		MailboxMessageAttachment: q.MailboxMessageAttachment.replaceDB(db),
+		MailboxMessage:           q.MailboxMessage.replaceDB(db),
+		MailboxScanTask:          q.MailboxScanTask.replaceDB(db),
+		OperationLog:             q.OperationLog.replaceDB(db),
+		Resume:                   q.Resume.replaceDB(db),
+		Role:                     q.Role.replaceDB(db),
+		ScreeningResult:          q.ScreeningResult.replaceDB(db),
+		Tag:                      q.Tag.replaceDB(db),
+		TagGroup:                 q.TagGroup.replaceDB(db),
+		User:                     q.User.replaceDB(db),
+		UserRole:                 q.UserRole.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	Application     *applicationDo
-	Candidate       *candidateDo
-	Job             *jobDo
-	JobCategory     *jobCategoryDo
-	JobMember       *jobMemberDo
-	JobTag          *jobTagDo
-	MailboxAccount  *mailboxAccountDo
-	MailboxMessage  *mailboxMessageDo
-	MailboxScanTask *mailboxScanTaskDo
-	OperationLog    *operationLogDo
-	Resume          *resumeDo
-	Role            *roleDo
-	ScreeningResult *screeningResultDo
-	Tag             *tagDo
-	TagGroup        *tagGroupDo
-	User            *userDo
-	UserRole        *userRoleDo
+	Application              *applicationDo
+	Candidate                *candidateDo
+	Job                      *jobDo
+	JobCategory              *jobCategoryDo
+	JobMember                *jobMemberDo
+	JobTag                   *jobTagDo
+	MailboxAccount           *mailboxAccountDo
+	MailboxMessageAttachment *mailboxMessageAttachmentDo
+	MailboxMessage           *mailboxMessageDo
+	MailboxScanTask          *mailboxScanTaskDo
+	OperationLog             *operationLogDo
+	Resume                   *resumeDo
+	Role                     *roleDo
+	ScreeningResult          *screeningResultDo
+	Tag                      *tagDo
+	TagGroup                 *tagGroupDo
+	User                     *userDo
+	UserRole                 *userRoleDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		Application:     q.Application.WithContext(ctx),
-		Candidate:       q.Candidate.WithContext(ctx),
-		Job:             q.Job.WithContext(ctx),
-		JobCategory:     q.JobCategory.WithContext(ctx),
-		JobMember:       q.JobMember.WithContext(ctx),
-		JobTag:          q.JobTag.WithContext(ctx),
-		MailboxAccount:  q.MailboxAccount.WithContext(ctx),
-		MailboxMessage:  q.MailboxMessage.WithContext(ctx),
-		MailboxScanTask: q.MailboxScanTask.WithContext(ctx),
-		OperationLog:    q.OperationLog.WithContext(ctx),
-		Resume:          q.Resume.WithContext(ctx),
-		Role:            q.Role.WithContext(ctx),
-		ScreeningResult: q.ScreeningResult.WithContext(ctx),
-		Tag:             q.Tag.WithContext(ctx),
-		TagGroup:        q.TagGroup.WithContext(ctx),
-		User:            q.User.WithContext(ctx),
-		UserRole:        q.UserRole.WithContext(ctx),
+		Application:              q.Application.WithContext(ctx),
+		Candidate:                q.Candidate.WithContext(ctx),
+		Job:                      q.Job.WithContext(ctx),
+		JobCategory:              q.JobCategory.WithContext(ctx),
+		JobMember:                q.JobMember.WithContext(ctx),
+		JobTag:                   q.JobTag.WithContext(ctx),
+		MailboxAccount:           q.MailboxAccount.WithContext(ctx),
+		MailboxMessageAttachment: q.MailboxMessageAttachment.WithContext(ctx),
+		MailboxMessage:           q.MailboxMessage.WithContext(ctx),
+		MailboxScanTask:          q.MailboxScanTask.WithContext(ctx),
+		OperationLog:             q.OperationLog.WithContext(ctx),
+		Resume:                   q.Resume.WithContext(ctx),
+		Role:                     q.Role.WithContext(ctx),
+		ScreeningResult:          q.ScreeningResult.WithContext(ctx),
+		Tag:                      q.Tag.WithContext(ctx),
+		TagGroup:                 q.TagGroup.WithContext(ctx),
+		User:                     q.User.WithContext(ctx),
+		UserRole:                 q.UserRole.WithContext(ctx),
 	}
 }
 

@@ -58,6 +58,7 @@ func (s *operationLogService) List(ctx context.Context, query dto.OperationLogQu
 	query = normalizeOperationLogQuery(query)
 	items, total, err := s.repo.List(ctx, repository.OperationLogListFilter{
 		User:     strings.TrimSpace(query.User),
+		Date:     query.Date,
 		Page:     query.Page,
 		PageSize: query.PageSize,
 	})

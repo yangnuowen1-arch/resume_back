@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -105,7 +106,10 @@ func (c *Config) GoogleOAuthEnabled() bool {
 }
 
 func (c *Config) MailboxEnabled() bool {
-	return c.GoogleOAuthEnabled()
+	// 邮箱导入必须把原文件写入 R2，并把可直接访问的地址回填候选人列表。
+	// 未配置公开域名时 R2Uploader 只能生成 r2:// 地址，浏览器无法打开，
+	// 因此不启用邮箱入口，避免悄悄回退到本地 uploads/。
+	return c.GoogleOAuthEnabled() && c.R2Enabled() && strings.TrimSpace(c.R2PublicBaseURL) != ""
 }
 
 func getEnv(key string, defaultValue string) string {

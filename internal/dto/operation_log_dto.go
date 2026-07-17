@@ -6,6 +6,7 @@ type OperationLogQuery struct {
 	Page     int
 	PageSize int
 	User     string
+	Date     *time.Time
 }
 
 type RecordOperationLogRequest struct {

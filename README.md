@@ -13,7 +13,7 @@ R2_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
 R2_BUCKET=resume
 R2_ACCESS_KEY_ID=your_r2_s3_access_key_id
 R2_SECRET_ACCESS_KEY=your_r2_s3_secret_access_key
-# Optional. Set this only when the bucket is public or you use a custom public domain.
+# Required when enabling mailbox imports, so candidate-list resumeFileUrl is browser-openable.
 R2_PUBLIC_BASE_URL=
 
 # Optional: Dify workflow integration for AI resume screening.

@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
+	"github.com/yangnuowen1-arch/resume_back/internal/filemime"
 	"github.com/yangnuowen1-arch/resume_back/internal/response"
 	"github.com/yangnuowen1-arch/resume_back/internal/service"
 	"github.com/yangnuowen1-arch/resume_back/internal/storage"
@@ -61,10 +62,7 @@ func (h *ResumeHandler) Upload(c *gin.Context) {
 	// 取出文件扩展名并转成小写，后面生成服务端文件名时继续保留文件类型。
 	ext := strings.ToLower(filepath.Ext(originalFilename))
 
-	fileType := file.Header.Get("Content-Type")
-	if fileType == "" {
-		fileType = strings.TrimPrefix(ext, ".")
-	}
+	fileType := filemime.Normalize(file.Header.Get("Content-Type"), originalFilename)
 
 	objectKey := "resumes/" + uuid.NewString() + ext
 	uploadResult, err := h.uploader.Upload(c.Request.Context(), objectKey, file, fileType)

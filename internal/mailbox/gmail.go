@@ -153,7 +153,13 @@ func (p *GmailProvider) FetchAttachments(ctx context.Context, token *oauth2.Toke
 			return nil, fmt.Errorf("gmail decode attachment %s: %w", part.Filename, err)
 		}
 
+		attachmentID := part.Body.AttachmentId
+		if attachmentID == "" {
+			// 内嵌小附件可能没有 attachmentId，MIME partId 在同一邮件内同样稳定。
+			attachmentID = part.PartId
+		}
 		attachments = append(attachments, Attachment{
+			ID:          attachmentID,
 			Filename:    part.Filename,
 			ContentType: part.MimeType,
 			Data:        decoded,

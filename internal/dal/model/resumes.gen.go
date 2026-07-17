@@ -17,7 +17,7 @@ type Resume struct {
 	OriginalFilename *string    `gorm:"column:original_filename;type:character varying(255)" json:"original_filename"`
 	FileKey          *string    `gorm:"column:file_key;type:text" json:"file_key"`
 	FileURL          *string    `gorm:"column:file_url;type:text" json:"file_url"`
-	FileType         *string    `gorm:"column:file_type;type:character varying(50)" json:"file_type"`
+	FileType         *string    `gorm:"column:file_type;type:character varying(255)" json:"file_type"`
 	FileSize         *int64     `gorm:"column:file_size;type:bigint" json:"file_size"`
 	RawText          *string    `gorm:"column:raw_text;type:text" json:"raw_text"`
 	ParsedData       *string    `gorm:"column:parsed_data;type:jsonb" json:"parsed_data"`

@@ -27,6 +27,7 @@ type OperationLogListItem struct {
 
 type OperationLogListFilter struct {
 	User     string
+	Date     *time.Time
 	Page     int
 	PageSize int
 }
@@ -84,6 +85,19 @@ func (r *operationLogRepository) List(ctx context.Context, filter OperationLogLi
 		if userID, err := strconv.ParseInt(filter.User, 10, 64); err == nil && userID > 0 {
 			queryBuilder = queryBuilder.Or("operation_logs.user_id = ?", userID)
 		}
+	}
+
+	if filter.Date != nil {
+		dayStart := time.Date(
+			filter.Date.Year(), filter.Date.Month(), filter.Date.Day(),
+			0, 0, 0, 0, filter.Date.Location(),
+		)
+		dayEnd := dayStart.AddDate(0, 0, 1)
+		queryBuilder = queryBuilder.Where(
+			"operation_logs.created_at >= ? AND operation_logs.created_at < ?",
+			dayStart,
+			dayEnd,
+		)
 	}
 
 	var total int64

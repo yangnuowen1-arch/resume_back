@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -153,6 +154,12 @@ func TestRunResumeScreeningQueuesTaskWithoutCallingDifySynchronously(t *testing.
 	if repo.created == nil || repo.created.Status != ScreeningTaskStatusQueued {
 		t.Fatalf("expected created screening result to be queued, got %#v", repo.created)
 	}
+	if repo.created.CreatedAt.IsZero() {
+		t.Fatal("expected created screening result time to be set")
+	}
+	if _, offset := repo.created.CreatedAt.Zone(); offset != 8*60*60 {
+		t.Fatalf("expected created screening result time to use +08:00, got %s", repo.created.CreatedAt.Format(time.RFC3339))
+	}
 	if difyClient.calls != 0 {
 		t.Fatalf("expected Dify not to be called synchronously, got %d calls", difyClient.calls)
 	}
@@ -170,10 +177,10 @@ func TestRunResumeScreeningQueuesTaskWithoutCallingDifySynchronously(t *testing.
 func TestProcessQueuedResumeScreeningMarksRunningAndSuccess(t *testing.T) {
 	fileKey := "resumes/alice.pdf"
 	filename := "alice.pdf"
-	fileType := "application/pdf"
+	fileType := "pdf"
 	repo := &stubScreeningTaskRepository{}
 	difyClient := &stubDifyClient{
-		resultText: `{"score":91,"match_level":"strong","recommendation":"recommend_interview","summary":"Good fit","strengths":["Go"],"weaknesses":[],"risks":[],"missing_requirements":[]}`,
+		resultText: `{"candidate_name":" Alice ","score":91,"match_level":"strong","recommendation":"recommend_interview","summary":"Good fit","strengths":["Go"],"weaknesses":[],"risks":[],"missing_requirements":[]}`,
 	}
 	service := &screeningTaskService{
 		repo: repo,
@@ -213,11 +220,291 @@ func TestProcessQueuedResumeScreeningMarksRunningAndSuccess(t *testing.T) {
 	if repo.successUpdate.Score == nil || *repo.successUpdate.Score != 91 {
 		t.Fatalf("expected score 91, got %#v", repo.successUpdate.Score)
 	}
+	if repo.successUpdate.CandidateName == nil || *repo.successUpdate.CandidateName != "Alice" {
+		t.Fatalf("expected trimmed candidate name Alice, got %#v", repo.successUpdate.CandidateName)
+	}
 	if difyClient.calls != 1 {
 		t.Fatalf("expected one Dify call, got %d", difyClient.calls)
 	}
 	if difyClient.lastReq.OutputLanguage != "English" {
 		t.Fatalf("expected output language English, got %q", difyClient.lastReq.OutputLanguage)
+	}
+	if difyClient.lastReq.ContentType != "application/pdf" {
+		t.Fatalf("expected normalized Dify content type application/pdf, got %q", difyClient.lastReq.ContentType)
+	}
+}
+
+func TestScreeningTaskDetailBuildsSectionedResponse(t *testing.T) {
+	candidateName := "杨诺雯-AI全栈或应用开发"
+	score := 35.0
+	storedMatchLevel := "poor"
+	storedRecommendation := "reject"
+	storedSummary := "候选人与岗位的核心技术栈不匹配，不建议推荐。"
+	storedStrengths := `["已落库优势"]`
+	storedWeaknesses := `["已落库劣势"]`
+	storedRisks := `["已落库风险"]`
+	resumeText := "姓名：杨诺雯\n嘉应学院·软件工程(本科)\n工作经验: 两年"
+	requirements := `[
+		{"id":"r1","label":"负责 Flutter 开发 / 要会 Flutter","status":"miss","comment":"候选人简历中无 Flutter 或 Dart 经验。","evidence":[]},
+		{"id":"r2","label":"学历：本科","status":"pass","comment":"符合本科要求。","evidence":[{"text":"嘉应学院·软件工程(本科)","start":7,"end":20}]},
+		{"id":"r3","label":"工作经验：3 年","status":"partial","comment":"工作年限略低于要求。","evidence":[{"text":"工作经验: 两年","start":21,"end":29}]}
+	]`
+	rawResponse := `{
+		"output": {
+			"current_title": "前端开发工程师 / AI 全栈开发",
+			"years_of_experience": 2,
+			"highest_education": "嘉应学院·软件工程（本科）",
+			"summary": "原始摘要不应覆盖已落库摘要。",
+			"strengths": ["原始优势不应覆盖已落库优势"],
+			"weaknesses": ["原始劣势不应覆盖已落库劣势"],
+			"risks": ["原始风险不应覆盖已落库风险"],
+			"suggested_interview_questions": ["请说明 Flutter 学习计划。"],
+			"markdown_report": "# Markdown 报告"
+		}
+	}`
+	candidateCurrentTitle := "候选人档案岗位"
+	candidateYears := 9.0
+	candidateEducation := "候选人档案学历"
+
+	service := &screeningTaskService{repo: &stubScreeningTaskRepository{detail: &repository.ScreeningTaskDetailItem{
+		ID:                         30,
+		Status:                     ScreeningTaskStatusSuccess,
+		CandidateName:              &candidateName,
+		Position:                   "Frontend",
+		CandidateCurrentTitle:      &candidateCurrentTitle,
+		CandidateYearsOfExperience: &candidateYears,
+		CandidateHighestEducation:  &candidateEducation,
+		AIScore:                    &score,
+		MatchLevel:                 &storedMatchLevel,
+		Recommendation:             &storedRecommendation,
+		Summary:                    &storedSummary,
+		Strengths:                  &storedStrengths,
+		Weaknesses:                 &storedWeaknesses,
+		Risks:                      &storedRisks,
+		RawResponse:                &rawResponse,
+		Requirements:               &requirements,
+		ResumeText:                 &resumeText,
+	}}}
+
+	result, err := service.Detail(context.Background(), 30)
+	if err != nil {
+		t.Fatalf("get screening detail: %v", err)
+	}
+
+	if result.Status != ScreeningTaskStatusSuccess {
+		t.Fatalf("expected success status, got %q", result.Status)
+	}
+	if result.Sections.Summary.Text == nil || *result.Sections.Summary.Text != storedSummary {
+		t.Fatalf("expected stored summary, got %#v", result.Sections.Summary.Text)
+	}
+	if result.Sections.CandidateInfo.Name == nil || *result.Sections.CandidateInfo.Name != candidateName {
+		t.Fatalf("expected candidate name, got %#v", result.Sections.CandidateInfo.Name)
+	}
+	if result.Sections.CandidateInfo.CurrentTitle == nil || *result.Sections.CandidateInfo.CurrentTitle != "前端开发工程师 / AI 全栈开发" {
+		t.Fatalf("expected AI current title to take precedence, got %#v", result.Sections.CandidateInfo.CurrentTitle)
+	}
+	if result.Sections.CandidateInfo.YearsOfExperience == nil || *result.Sections.CandidateInfo.YearsOfExperience != 2 {
+		t.Fatalf("expected AI years of experience, got %#v", result.Sections.CandidateInfo.YearsOfExperience)
+	}
+	if result.Sections.CandidateInfo.HighestEducation == nil || *result.Sections.CandidateInfo.HighestEducation != "嘉应学院·软件工程（本科）" {
+		t.Fatalf("expected AI education, got %#v", result.Sections.CandidateInfo.HighestEducation)
+	}
+	if result.Sections.CandidateInfo.TaskStatus != ScreeningTaskStatusSuccess {
+		t.Fatalf("expected task status success, got %q", result.Sections.CandidateInfo.TaskStatus)
+	}
+	if result.Sections.Assessment.Score == nil || *result.Sections.Assessment.Score != score {
+		t.Fatalf("expected assessment score %v, got %#v", score, result.Sections.Assessment.Score)
+	}
+	if result.Sections.Assessment.MatchLevel == nil || *result.Sections.Assessment.MatchLevel != storedMatchLevel {
+		t.Fatalf("expected match level %q, got %#v", storedMatchLevel, result.Sections.Assessment.MatchLevel)
+	}
+	if len(result.Sections.RequirementsComparison.Items) != 3 {
+		t.Fatalf("expected 3 requirements, got %d", len(result.Sections.RequirementsComparison.Items))
+	}
+	if len(result.Sections.RequirementsComparison.MatchedItems) != 1 {
+		t.Fatalf("expected 1 matched item, got %d", len(result.Sections.RequirementsComparison.MatchedItems))
+	}
+	if len(result.Sections.RequirementsComparison.AttentionItems) != 2 {
+		t.Fatalf("expected 2 attention items, got %d", len(result.Sections.RequirementsComparison.AttentionItems))
+	}
+	if situation := result.Sections.RequirementsComparison.Items[1].CandidateSituation; situation == nil || *situation != "嘉应学院·软件工程(本科)" {
+		t.Fatalf("expected candidate situation derived from evidence, got %#v", situation)
+	}
+	if situation := result.Sections.RequirementsComparison.Items[0].CandidateSituation; situation == nil || *situation != "候选人简历中无 Flutter 或 Dart 经验。" {
+		t.Fatalf("expected candidate situation to fall back to comment, got %#v", situation)
+	}
+	if got := result.Sections.CandidateAnalysis.Strengths; len(got) != 1 || got[0] != "已落库优势" {
+		t.Fatalf("expected stored strengths to take precedence, got %#v", got)
+	}
+	if got := result.Sections.CandidateAnalysis.SuggestedInterviewQuestions; len(got) != 1 || got[0] != "请说明 Flutter 学习计划。" {
+		t.Fatalf("expected interview questions from raw output, got %#v", got)
+	}
+	if !result.Sections.Resume.TextAvailable || !result.Sections.Resume.HighlightAvailable {
+		t.Fatalf("expected resume text and highlights to be available, got %#v", result.Sections.Resume)
+	}
+	if result.Sections.Fallback.ShouldUseMarkdownFallback {
+		t.Fatal("structured requirements should not use the Markdown fallback")
+	}
+	if result.Sections.Fallback.MarkdownReport == nil || *result.Sections.Fallback.MarkdownReport != "# Markdown 报告" {
+		t.Fatalf("expected fallback markdown report, got %#v", result.Sections.Fallback.MarkdownReport)
+	}
+}
+
+func TestScreeningTaskDetailUsesMarkdownFallbackWhenRequirementsAreAbsent(t *testing.T) {
+	rawResponse := `{"output":{"markdown_report":"# Markdown 报告"}}`
+	errorMessage := "Dify 简历筛选失败: 请求超时"
+	service := &screeningTaskService{repo: &stubScreeningTaskRepository{detail: &repository.ScreeningTaskDetailItem{
+		ID:           31,
+		Status:       ScreeningTaskStatusFailed,
+		ErrorMessage: &errorMessage,
+		RawResponse:  &rawResponse,
+	}}}
+
+	result, err := service.Detail(context.Background(), 31)
+	if err != nil {
+		t.Fatalf("get screening detail: %v", err)
+	}
+	if result.Status != ScreeningTaskStatusFailed {
+		t.Fatalf("expected failed status, got %q", result.Status)
+	}
+	if result.ErrorMessage == nil || *result.ErrorMessage != errorMessage {
+		t.Fatalf("expected detail error message, got %#v", result.ErrorMessage)
+	}
+	if result.Sections.CandidateInfo.TaskErrorMessage == nil || *result.Sections.CandidateInfo.TaskErrorMessage != errorMessage {
+		t.Fatalf("expected section error message, got %#v", result.Sections.CandidateInfo.TaskErrorMessage)
+	}
+	if result.Sections.Fallback.ShouldUseMarkdownFallback {
+		t.Fatal("failed tasks must show their error rather than a Markdown fallback")
+	}
+	if result.Sections.Resume.TextAvailable || result.Sections.Resume.HighlightAvailable {
+		t.Fatalf("expected unavailable resume state, got %#v", result.Sections.Resume)
+	}
+	if result.Sections.CandidateAnalysis.Strengths == nil || result.Sections.CandidateAnalysis.Weaknesses == nil || result.Sections.CandidateAnalysis.Risks == nil || result.Sections.CandidateAnalysis.SuggestedInterviewQuestions == nil {
+		t.Fatalf("expected empty arrays, got %#v", result.Sections.CandidateAnalysis)
+	}
+}
+
+func TestScreeningTaskDetailKeepsStructuredSectionsWithoutResumeText(t *testing.T) {
+	requirements := `[
+		{"id":"r1","label":"学历：本科","status":"pass","comment":"符合本科及以上学历要求。","evidence":[{"text":"嘉应学院·软件工程(本科)","start":null,"end":null}]}
+	]`
+	rawResponse := `{"output":{"markdown_report":"# Markdown 报告"}}`
+	service := &screeningTaskService{repo: &stubScreeningTaskRepository{detail: &repository.ScreeningTaskDetailItem{
+		ID:           32,
+		Status:       ScreeningTaskStatusSuccess,
+		Requirements: &requirements,
+		RawResponse:  &rawResponse,
+	}}}
+
+	result, err := service.Detail(context.Background(), 32)
+	if err != nil {
+		t.Fatalf("get screening detail: %v", err)
+	}
+	if result.Sections.Fallback.ShouldUseMarkdownFallback {
+		t.Fatal("available structured requirements must not fall back only because resume text is missing")
+	}
+	if result.Sections.Resume.TextAvailable || result.Sections.Resume.HighlightAvailable {
+		t.Fatalf("expected unavailable resume/highlight state, got %#v", result.Sections.Resume)
+	}
+	item := result.Sections.RequirementsComparison.Items[0]
+	if len(item.Evidence) != 0 {
+		t.Fatalf("expected unverified evidence to be removed, got %#v", item.Evidence)
+	}
+	if item.CandidateSituation == nil || *item.CandidateSituation != "嘉应学院·软件工程(本科)" {
+		t.Fatalf("expected candidate situation for table display, got %#v", item.CandidateSituation)
+	}
+}
+
+func TestBuildRequirementsJSONVerifiesEvidenceAndUsesUTF16Offsets(t *testing.T) {
+	comment := "符合本科要求。"
+	resumeText := "姓名：杨诺雯\n嘉应学院·软件工程(本科)"
+	stored := buildRequirementsJSON([]aiRequirement{{
+		ID:      "r1",
+		Label:   "学历：本科",
+		Status:  "pass",
+		Comment: &comment,
+		Evidence: []aiEvidence{
+			{Text: "嘉应学院·软件工程(本科)"},
+			{Text: "不存在的证据"},
+		},
+	}}, resumeText)
+	if stored == nil {
+		t.Fatal("expected normalized requirements")
+	}
+
+	requirements := parseStoredRequirements(stored)
+	if len(requirements) != 1 || len(requirements[0].Evidence) != 1 {
+		t.Fatalf("expected only the verified evidence, got %#v", requirements)
+	}
+	evidence := requirements[0].Evidence[0]
+	if evidence.Start == nil || evidence.End == nil || *evidence.Start != 7 || *evidence.End != 20 {
+		t.Fatalf("expected UTF-16 offsets [7,20], got %#v", evidence)
+	}
+	if requirements[0].CandidateSituation == nil || *requirements[0].CandidateSituation != "嘉应学院·软件工程(本科)" {
+		t.Fatalf("expected situation from verified evidence, got %#v", requirements[0].CandidateSituation)
+	}
+
+	withoutResumeText := buildRequirementsJSON([]aiRequirement{{
+		ID:       "r1",
+		Label:    "学历：本科",
+		Status:   "pass",
+		Evidence: []aiEvidence{{Text: "嘉应学院·软件工程(本科)"}},
+	}}, "")
+	withoutResumeRequirements := parseStoredRequirements(withoutResumeText)
+	if len(withoutResumeRequirements) != 1 || len(withoutResumeRequirements[0].Evidence) != 0 {
+		t.Fatalf("expected no unverified evidence without resume text, got %#v", withoutResumeRequirements)
+	}
+
+	candidateSituation := "候选人简历中未体现 Flutter 或 Dart 经验。"
+	withSituation := buildRequirementsJSON([]aiRequirement{{
+		ID:                 "r2",
+		Label:              "要会 Flutter",
+		CandidateSituation: &candidateSituation,
+		Status:             "miss",
+	}}, "")
+	withSituationRequirements := parseStoredRequirements(withSituation)
+	if len(withSituationRequirements) != 1 || withSituationRequirements[0].CandidateSituation == nil || *withSituationRequirements[0].CandidateSituation != candidateSituation {
+		t.Fatalf("expected candidate_situation from AI output, got %#v", withSituationRequirements)
+	}
+}
+
+func TestScreeningTaskDetailHandlesMalformedStoredDataSafely(t *testing.T) {
+	malformedRequirements := `not-json`
+	malformedStringSlice := `{not-json}`
+	malformedRawResponse := `{not-json}`
+	service := &screeningTaskService{repo: &stubScreeningTaskRepository{detail: &repository.ScreeningTaskDetailItem{
+		ID:           33,
+		Status:       ScreeningTaskStatusSuccess,
+		Requirements: &malformedRequirements,
+		Strengths:    &malformedStringSlice,
+		Weaknesses:   &malformedStringSlice,
+		Risks:        &malformedStringSlice,
+		RawResponse:  &malformedRawResponse,
+	}}}
+
+	result, err := service.Detail(context.Background(), 33)
+	if err != nil {
+		t.Fatalf("get screening detail: %v", err)
+	}
+	if result.Requirements == nil || len(result.Requirements) != 0 {
+		t.Fatalf("expected safe empty requirements, got %#v", result.Requirements)
+	}
+	if result.Sections.RequirementsComparison.Items == nil || result.Sections.RequirementsComparison.MatchedItems == nil || result.Sections.RequirementsComparison.AttentionItems == nil {
+		t.Fatalf("expected non-nil requirement arrays, got %#v", result.Sections.RequirementsComparison)
+	}
+	if result.Sections.CandidateAnalysis.Strengths == nil || result.Sections.CandidateAnalysis.Weaknesses == nil || result.Sections.CandidateAnalysis.Risks == nil || result.Sections.CandidateAnalysis.SuggestedInterviewQuestions == nil {
+		t.Fatalf("expected safe empty analysis arrays, got %#v", result.Sections.CandidateAnalysis)
+	}
+	if result.MarkdownReport != nil || result.Sections.Fallback.MarkdownReport != nil {
+		t.Fatalf("expected malformed raw response to omit Markdown, got %#v", result.Sections.Fallback)
+	}
+}
+
+func TestScreeningTaskDetailTreatsNilRepositoryItemAsNotFound(t *testing.T) {
+	service := &screeningTaskService{repo: &stubScreeningTaskRepository{}}
+	_, err := service.Detail(context.Background(), 34)
+	if !errors.Is(err, ErrScreeningTaskNotFound) {
+		t.Fatalf("expected not found for nil detail item, got %v", err)
 	}
 }
 
@@ -225,6 +512,8 @@ type stubScreeningTaskRepository struct {
 	repository.ScreeningTaskRepository
 	nextID        int64
 	created       *model.ScreeningResult
+	detail        *repository.ScreeningTaskDetailItem
+	detailErr     error
 	runningIDs    []int64
 	successID     int64
 	successUpdate repository.ScreeningResultSuccessUpdate
@@ -256,6 +545,10 @@ func (r *stubScreeningTaskRepository) MarkFailed(ctx context.Context, id int64, 
 	r.failedID = id
 	r.failedMessage = message
 	return nil
+}
+
+func (r *stubScreeningTaskRepository) FindDetailByID(ctx context.Context, id int64) (*repository.ScreeningTaskDetailItem, error) {
+	return r.detail, r.detailErr
 }
 
 type stubResumeRepository struct {

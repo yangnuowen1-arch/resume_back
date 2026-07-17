@@ -714,6 +714,8 @@ func toCandidateListResponse(candidate repository.CandidateListItem) dto.Candida
 		ResumeID:                candidate.ResumeID,
 		ResumeFilename:          candidate.ResumeFilename,
 		ResumeFileURL:           candidate.ResumeFileURL,
+		ResumePreviewURL:        resumePreviewURL(candidate.ResumeID, candidate.ResumeFilename, candidate.ResumeFileType),
+		ResumeFileType:          candidate.ResumeFileType,
 		ResumeParseStatus:       candidate.ResumeParseStatus,
 		ResumeParseError:        candidate.ResumeParseError,
 		ResumeLanguage:          candidate.ResumeLanguage,

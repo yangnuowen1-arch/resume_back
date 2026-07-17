@@ -228,6 +228,60 @@ func TestMailboxOAuthURLRequiresJWTAndReturnsRandomState(t *testing.T) {
 	}
 }
 
+func TestMailboxScanStatusUsesLowerCamelCaseJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	message := "one attachment was skipped"
+	mailboxService := &scanStatusMailboxHandlerService{
+		status: &service.ScanTaskStatus{
+			ID:            23,
+			AccountID:     17,
+			TriggerSource: service.ScanTriggerManual,
+			Status:        service.ScanTaskStatusDone,
+			Scanned:       3,
+			Imported:      2,
+			Skipped:       1,
+			Error:         &message,
+		},
+	}
+	handler := NewMailboxHandler(mailboxService, nil, nil, "", "")
+	router := gin.New()
+	router.GET("/api/v1/mailbox/scan/:taskId", handler.GetScanStatus)
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/mailbox/scan/23", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("scan status=%d body=%s", response.Code, response.Body.String())
+	}
+	if mailboxService.taskID != 23 {
+		t.Fatalf("requested task ID=%d, want 23", mailboxService.taskID)
+	}
+
+	var payload struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode scan status response: %v", err)
+	}
+	for _, field := range []string{
+		"id", "accountId", "triggerSource", "status", "scanned", "imported", "skipped", "error", "startedAt", "finishedAt", "createdAt",
+	} {
+		if _, ok := payload.Data[field]; !ok {
+			t.Errorf("response data is missing lower-camel field %q: %s", field, response.Body.String())
+		}
+	}
+	if _, ok := payload.Data["Status"]; ok {
+		t.Errorf("response data must not contain legacy upper-camel field Status: %s", response.Body.String())
+	}
+
+	var status string
+	if err := json.Unmarshal(payload.Data["status"], &status); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if status != service.ScanTaskStatusDone {
+		t.Fatalf("status=%q, want %q", status, service.ScanTaskStatusDone)
+	}
+}
+
 func newMailboxOAuthTestRouter(h *MailboxHandler) *gin.Engine {
 	router := gin.New()
 	api := router.Group("/api/v1")
@@ -309,6 +363,17 @@ func (s *recordingMailboxHandlerService) EnqueueScan(_ context.Context, accountI
 	s.accountID = accountID
 	s.triggerSource = triggerSource
 	return s.taskID, nil
+}
+
+type scanStatusMailboxHandlerService struct {
+	testMailboxHandlerService
+	status *service.ScanTaskStatus
+	taskID int64
+}
+
+func (s *scanStatusMailboxHandlerService) GetScanTaskStatus(_ context.Context, taskID int64) (*service.ScanTaskStatus, error) {
+	s.taskID = taskID
+	return s.status, nil
 }
 
 type testOAuthProvider struct {

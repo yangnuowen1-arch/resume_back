@@ -35,6 +35,14 @@ type Uploader interface {
 	Delete(ctx context.Context, key string) error
 }
 
+// RangeOpener is implemented by storage backends that can fetch just one byte
+// range of an object. Keeping it separate from Uploader preserves compatibility
+// with existing upload-only fakes while allowing PDF viewers to load large
+// documents progressively.
+type RangeOpener interface {
+	OpenRange(ctx context.Context, key string, start, end int64) (*Object, error)
+}
+
 type LocalUploader struct {
 	root string
 }
@@ -108,6 +116,48 @@ func (u *LocalUploader) Open(ctx context.Context, key string) (*Object, error) {
 		Body:          file,
 		ContentLength: &size,
 	}, nil
+}
+
+// OpenRange opens an inclusive byte range without reading the rest of a local
+// file. The caller is responsible for validating the HTTP Range header; this
+// method still checks bounds to avoid returning a misleading partial stream.
+func (u *LocalUploader) OpenRange(ctx context.Context, key string, start, end int64) (*Object, error) {
+	if start < 0 || end < start {
+		return nil, fmt.Errorf("invalid byte range %d-%d", start, end)
+	}
+
+	file, err := os.Open(filepath.Join(u.root, filepath.FromSlash(key)))
+	if err != nil {
+		return nil, err
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if start >= stat.Size() || end >= stat.Size() {
+		_ = file.Close()
+		return nil, fmt.Errorf("byte range %d-%d is outside object size %d", start, end, stat.Size())
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+
+	length := end - start + 1
+	return &Object{
+		Body: &limitedReadCloser{
+			Reader: io.LimitReader(file, length),
+			Closer: file,
+		},
+		ContentLength: &length,
+	}, nil
+}
+
+type limitedReadCloser struct {
+	io.Reader
+	io.Closer
 }
 
 func (u *LocalUploader) Delete(ctx context.Context, key string) error {
@@ -201,6 +251,35 @@ func (u *R2Uploader) Open(ctx context.Context, key string) (*Object, error) {
 	output, err := u.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(u.bucket),
 		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	contentType := ""
+	if output.ContentType != nil {
+		contentType = *output.ContentType
+	}
+
+	return &Object{
+		Body:          output.Body,
+		ContentType:   contentType,
+		ContentLength: output.ContentLength,
+	}, nil
+}
+
+// OpenRange asks the S3-compatible backend to return exactly the requested
+// inclusive range. This prevents a PDF.js range request from downloading the
+// entire object through the application server.
+func (u *R2Uploader) OpenRange(ctx context.Context, key string, start, end int64) (*Object, error) {
+	if start < 0 || end < start {
+		return nil, fmt.Errorf("invalid byte range %d-%d", start, end)
+	}
+
+	output, err := u.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(u.bucket),
+		Key:    aws.String(key),
+		Range:  aws.String(fmt.Sprintf("bytes=%d-%d", start, end)),
 	})
 	if err != nil {
 		return nil, err

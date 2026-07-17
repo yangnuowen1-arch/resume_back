@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
+	"github.com/yangnuowen1-arch/resume_back/internal/timeutil"
 	"gorm.io/gorm"
 )
 
@@ -33,6 +34,7 @@ type CandidateListItem struct {
 	ResumeID                *int64
 	ResumeFilename          *string
 	ResumeFileURL           *string
+	ResumeFileType          *string
 	ResumeParseStatus       *string
 	ResumeParseError        *string
 	ResumeLanguage          *string
@@ -216,6 +218,7 @@ func (r *candidateRepository) EnqueueScreening(ctx context.Context, candidateID 
 			ApplicationID: application.ID,
 			Status:        "queued",
 			CreatedBy:     &createdBy,
+			CreatedAt:     timeutil.Now(),
 		}
 		if err := tx.Create(screeningResult).Error; err != nil {
 			return err
@@ -307,7 +310,8 @@ func (r *candidateRepository) FindByID(ctx context.Context, id int64) (*model.Ca
 	return candidate, nil
 }
 
-// FindByEmail 按邮箱查候选人（大小写不敏感，对齐 uq_candidates_email_lower 唯一索引）。
+// FindByEmail 按邮箱查首个候选人（大小写不敏感）。
+// 邮箱导入不再调用此方法合并候选人；该查询保留给其他业务场景。
 // 用于邮箱导入时按发件人合并候选人：未命中返回 (nil, nil)，便于调用方区分「新建」与「出错」。
 func (r *candidateRepository) FindByEmail(ctx context.Context, email string) (*model.Candidate, error) {
 	email = strings.TrimSpace(email)
@@ -427,6 +431,7 @@ const candidateListSelectColumns = `
 	latest_resume.id AS resume_id,
 	latest_resume.original_filename AS resume_filename,
 	latest_resume.file_url AS resume_file_url,
+	latest_resume.file_type AS resume_file_type,
 	latest_resume.parse_status AS resume_parse_status,
 	latest_resume.parse_error AS resume_parse_error,
 	latest_resume.language AS resume_language,
@@ -448,7 +453,7 @@ const candidateListPositionCategoryJoin = `
 
 const candidateListLatestResumeJoin = `
 	LEFT JOIN LATERAL (
-		SELECT id, original_filename, file_url, parse_status, parse_error, language, uploaded_at
+		SELECT id, original_filename, file_url, file_type, parse_status, parse_error, language, uploaded_at
 		FROM resumes
 		WHERE resumes.candidate_id = candidates.id
 		ORDER BY uploaded_at DESC, id DESC

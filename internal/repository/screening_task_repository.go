@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
+	"github.com/yangnuowen1-arch/resume_back/internal/timeutil"
 	"gorm.io/gorm"
 )
 
@@ -39,19 +40,28 @@ type ScreeningTaskListFilter struct {
 }
 
 type ScreeningTaskDetailItem struct {
-	ID             int64
-	CandidateName  *string
-	Position       string
-	AIScore        *float64
-	MatchLevel     *string
-	Recommendation *string
-	Summary        *string
-	RawResponse    *string
-	Requirements   *string
-	ResumeText     *string
+	ID                         int64
+	Status                     string
+	ErrorMessage               *string
+	CandidateName              *string
+	Position                   string
+	CandidateCurrentTitle      *string
+	CandidateYearsOfExperience *float64
+	CandidateHighestEducation  *string
+	AIScore                    *float64
+	MatchLevel                 *string
+	Recommendation             *string
+	Summary                    *string
+	Strengths                  *string
+	Weaknesses                 *string
+	Risks                      *string
+	RawResponse                *string
+	Requirements               *string
+	ResumeText                 *string
 }
 
 type ScreeningResultSuccessUpdate struct {
+	CandidateName       *string
 	Score               *float64
 	MatchLevel          *string
 	Recommendation      *string
@@ -86,6 +96,10 @@ func NewScreeningTaskRepository(db *gorm.DB) ScreeningTaskRepository {
 }
 
 func (r *screeningTaskRepository) Create(ctx context.Context, result *model.ScreeningResult) error {
+	if result.CreatedAt.IsZero() {
+		result.CreatedAt = timeutil.Now()
+	}
+
 	return r.db.WithContext(ctx).Create(result).Error
 }
 
@@ -104,6 +118,7 @@ func (r *screeningTaskRepository) MarkSuccess(ctx context.Context, id int64, upd
 		Model(&model.ScreeningResult{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
+			"candidate_name":       update.CandidateName,
 			"score":                update.Score,
 			"match_level":          update.MatchLevel,
 			"recommendation":       update.Recommendation,
@@ -174,12 +189,20 @@ func (r *screeningTaskRepository) FindDetailByID(ctx context.Context, id int64) 
 
 const screeningTaskDetailSelectColumns = `
 	screening_results.id,
-	candidates.name AS candidate_name,
+	screening_results.status,
+	screening_results.error_message,
+` + screeningTaskCandidateNameExpression + ` AS candidate_name,
 	jobs.title AS position,
+	candidates.current_position AS candidate_current_title,
+	candidates.years_of_experience AS candidate_years_of_experience,
+	candidates.highest_education AS candidate_highest_education,
 	screening_results.score AS ai_score,
 	screening_results.match_level,
 	screening_results.recommendation,
 	screening_results.summary,
+	screening_results.strengths,
+	screening_results.weaknesses,
+	screening_results.risks,
 	screening_results.raw_response,
 	screening_results.requirements,
 	resumes.raw_text AS resume_text
@@ -194,7 +217,7 @@ func (r *screeningTaskRepository) buildScreeningTaskListBaseQuery(ctx context.Co
 
 	if filter.Keyword != "" {
 		like := "%" + filter.Keyword + "%"
-		queryBuilder = queryBuilder.Where("(candidates.name LIKE ? OR candidates.email LIKE ? OR candidates.phone LIKE ? OR jobs.title LIKE ?)", like, like, like, like)
+		queryBuilder = queryBuilder.Where("("+screeningTaskCandidateNameExpression+" LIKE ? OR candidates.email LIKE ? OR candidates.phone LIKE ? OR jobs.title LIKE ?)", like, like, like, like)
 	}
 
 	if filter.Status != "" {
@@ -212,11 +235,29 @@ func (r *screeningTaskRepository) buildScreeningTaskListBaseQuery(ctx context.Co
 	return queryBuilder
 }
 
+// screeningTaskCandidateNameExpression prefers the canonical candidate record,
+// then the persistent AI-extracted name. The JSONB fallback supports rows that
+// predate the candidate_name migration.
+const screeningTaskCandidateNameExpression = `
+	COALESCE(
+		NULLIF(BTRIM(candidates.name), ''),
+		NULLIF(BTRIM(screening_results.candidate_name), ''),
+		CASE
+			WHEN jsonb_typeof(screening_results.raw_response #> '{output,candidate_name}') = 'string'
+			THEN NULLIF(BTRIM(screening_results.raw_response #>> '{output,candidate_name}'), '')
+		END,
+		CASE
+			WHEN jsonb_typeof(screening_results.raw_response -> 'candidate_name') = 'string'
+			THEN NULLIF(BTRIM(screening_results.raw_response ->> 'candidate_name'), '')
+		END
+	)
+`
+
 const screeningTaskListSelectColumns = `
 	screening_results.id,
 	screening_results.application_id,
 	applications.candidate_id,
-	candidates.name AS candidate_name,
+` + screeningTaskCandidateNameExpression + ` AS candidate_name,
 	applications.job_id,
 	jobs.title AS job_title,
 	jobs.title AS position,

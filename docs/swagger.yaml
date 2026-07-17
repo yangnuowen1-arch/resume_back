@@ -232,6 +232,15 @@ definitions:
     - password
     - username
     type: object
+  dto.RequirementEvidence:
+    properties:
+      end:
+        type: integer
+      start:
+        type: integer
+      text:
+        type: string
+    type: object
   dto.ResumeResponse:
     properties:
       candidateId:
@@ -282,6 +291,163 @@ definitions:
     required:
     - jobId
     - resumeId
+    type: object
+  dto.ScreeningAssessmentSection:
+    properties:
+      matchLevel:
+        type: string
+      recommendation:
+        type: string
+      score:
+        type: number
+    type: object
+  dto.ScreeningCandidateAnalysisSection:
+    properties:
+      risks:
+        items:
+          type: string
+        type: array
+      strengths:
+        items:
+          type: string
+        type: array
+      suggestedInterviewQuestions:
+        items:
+          type: string
+        type: array
+      weaknesses:
+        items:
+          type: string
+        type: array
+    type: object
+  dto.ScreeningCandidateInfoSection:
+    properties:
+      appliedPosition:
+        type: string
+      currentTitle:
+        type: string
+      highestEducation:
+        type: string
+      name:
+        type: string
+      taskErrorMessage:
+        type: string
+      taskStatus:
+        type: string
+      yearsOfExperience:
+        type: number
+    type: object
+  dto.ScreeningFallbackSection:
+    properties:
+      markdownReport:
+        type: string
+      shouldUseMarkdownFallback:
+        type: boolean
+    type: object
+  dto.ScreeningFinalRecommendationSection:
+    properties:
+      recommendation:
+        type: string
+      text:
+        type: string
+    type: object
+  dto.ScreeningRequirement:
+    properties:
+      candidateSituation:
+        type: string
+      comment:
+        type: string
+      evidence:
+        items:
+          $ref: '#/definitions/dto.RequirementEvidence'
+        type: array
+      id:
+        type: string
+      label:
+        type: string
+      status:
+        type: string
+    type: object
+  dto.ScreeningRequirementsComparisonSection:
+    properties:
+      attentionItems:
+        items:
+          $ref: '#/definitions/dto.ScreeningRequirement'
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/dto.ScreeningRequirement'
+        type: array
+      matchedItems:
+        items:
+          $ref: '#/definitions/dto.ScreeningRequirement'
+        type: array
+    type: object
+  dto.ScreeningResumeSection:
+    properties:
+      highlightAvailable:
+        type: boolean
+      text:
+        type: string
+      textAvailable:
+        type: boolean
+    type: object
+  dto.ScreeningSummarySection:
+    properties:
+      text:
+        type: string
+    type: object
+  dto.ScreeningTaskDetailResponse:
+    properties:
+      aiScore:
+        type: number
+      candidateName:
+        type: string
+      errorMessage:
+        type: string
+      id:
+        type: integer
+      markdownReport:
+        type: string
+      matchLevel:
+        type: string
+      position:
+        type: string
+      recommendation:
+        type: string
+      requirements:
+        items:
+          $ref: '#/definitions/dto.ScreeningRequirement'
+        type: array
+      resumeText:
+        type: string
+      sections:
+        allOf:
+        - $ref: '#/definitions/dto.ScreeningTaskDetailSections'
+        description: Sections 是详情页的新主数据源；保留上方平铺字段以兼容已发布的前端。
+      status:
+        type: string
+      summary:
+        type: string
+    type: object
+  dto.ScreeningTaskDetailSections:
+    properties:
+      assessment:
+        $ref: '#/definitions/dto.ScreeningAssessmentSection'
+      candidateAnalysis:
+        $ref: '#/definitions/dto.ScreeningCandidateAnalysisSection'
+      candidateInfo:
+        $ref: '#/definitions/dto.ScreeningCandidateInfoSection'
+      fallback:
+        $ref: '#/definitions/dto.ScreeningFallbackSection'
+      finalRecommendation:
+        $ref: '#/definitions/dto.ScreeningFinalRecommendationSection'
+      requirementsComparison:
+        $ref: '#/definitions/dto.ScreeningRequirementsComparisonSection'
+      resume:
+        $ref: '#/definitions/dto.ScreeningResumeSection'
+      summary:
+        $ref: '#/definitions/dto.ScreeningSummarySection'
     type: object
   dto.UpdateCandidateRequest:
     properties:
@@ -884,6 +1050,31 @@ paths:
       summary: 批量分析候选人简历
       tags:
       - 候选人
+  /dashboard/summary:
+    get:
+      consumes:
+      - application/json
+      description: 实时统计简历、待筛选任务、推荐和拒绝数量；响应不使用缓存，确保仪表盘与当前业务数据同步
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询仪表盘摘要
+      tags:
+      - 仪表盘
   /job-categories:
     get:
       consumes:
@@ -1385,6 +1576,250 @@ paths:
       summary: 给岗位绑定标签
       tags:
       - 岗位
+  /mailbox/accounts:
+    get:
+      consumes:
+      - application/json
+      description: 返回当前已授权连接的所有邮箱账号列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 列出已连接邮箱账号
+      tags:
+      - 邮箱
+  /mailbox/accounts/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的邮箱账号连接
+      parameters:
+      - description: 账号 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 解绑邮箱账号
+      tags:
+      - 邮箱
+  /mailbox/oauth/{provider}/callback:
+    get:
+      consumes:
+      - application/json
+      description: 邮箱平台授权后的回调地址，用 code 换取 token 并存储到 mailbox_accounts；授权成功后立即异步扫描未读邮件中的简历附件
+      parameters:
+      - description: 邮箱平台
+        enum:
+        - google
+        in: path
+        name: provider
+        required: true
+        type: string
+      - description: OAuth 授权码
+        in: query
+        name: code
+        required: true
+        type: string
+      - description: 一次性 OAuth 状态码
+        in: query
+        name: state
+        required: true
+        type: string
+      - description: OAuth 授权错误码
+        in: query
+        name: error
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.APIResponse'
+            - properties:
+                data:
+                  properties:
+                    accountId:
+                      format: int64
+                      type: integer
+                    email:
+                      type: string
+                    taskId:
+                      format: int64
+                      type: integer
+                  type: object
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      summary: OAuth 授权回调
+      tags:
+      - 邮箱
+  /mailbox/oauth/{provider}/url:
+    get:
+      consumes:
+      - application/json
+      description: 返回指定邮箱平台（google）的 OAuth 授权跳转地址，用户点击后授权
+      parameters:
+      - description: 邮箱平台
+        enum:
+        - google
+        in: path
+        name: provider
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.APIResponse'
+            - properties:
+                data:
+                  properties:
+                    url:
+                      type: string
+                  type: object
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取 OAuth 授权地址
+      tags:
+      - 邮箱
+  /mailbox/scan:
+    post:
+      consumes:
+      - application/json
+      description: 触发指定邮箱账号的扫描任务，异步执行，返回任务 ID 供轮询状态
+      parameters:
+      - description: 扫描请求
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            accountId:
+              format: int64
+              type: integer
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.APIResponse'
+            - properties:
+                data:
+                  properties:
+                    taskId:
+                      format: int64
+                      type: integer
+                  type: object
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 手动触发邮箱扫描
+      tags:
+      - 邮箱
+  /mailbox/scan/{taskId}:
+    get:
+      consumes:
+      - application/json
+      description: 根据任务 ID 查询扫描任务的状态与统计（scanned/imported/skipped）
+      parameters:
+      - description: 任务 ID
+        in: path
+        name: taskId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询扫描任务状态
+      tags:
+      - 邮箱
   /operation-logs:
     get:
       consumes:
@@ -1406,11 +1841,19 @@ paths:
         in: query
         name: user
         type: string
+      - description: 操作日期，格式 YYYY-MM-DD（兼容 YYYY/MM/DD），按 Asia/Shanghai 自然日筛选
+        in: query
+        name: date
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "400":
+          description: Bad Request
           schema:
             $ref: '#/definitions/response.APIResponse'
         "401":
@@ -1640,6 +2083,51 @@ paths:
       security:
       - BearerAuth: []
       summary: 查询简历筛选任务列表
+      tags:
+      - 筛选任务
+  /screening-tasks/{id}:
+    get:
+      consumes:
+      - application/json
+      description: 返回单个 screening_result 及按详情页模块组织的 sections（摘要、候选人信息、评估结论、岗位对比、亮点/关注、最终建议和
+        Markdown 降级）
+      parameters:
+      - description: 筛选任务 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ScreeningTaskDetailResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询简历筛选任务详情
       tags:
       - 筛选任务
   /screening-tasks/run:
