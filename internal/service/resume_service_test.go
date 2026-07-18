@@ -99,6 +99,20 @@ func TestResumeObjectKeyDerivesKeyFromPublicR2URL(t *testing.T) {
 	}
 }
 
+func TestToResumeResponseUsesFileURLAsPreviewURL(t *testing.T) {
+	fileURL := "https://pub-208ce3c7a43045d9855c32b73760e0d5.r2.dev/resumes/resume.pdf"
+	resume := &model.Resume{
+		ID:          12,
+		FileURL:     ptrString("  " + fileURL + "  "),
+		ParseStatus: ResumeParseStatusPending,
+	}
+
+	response := toResumeResponse(resume)
+	if response.PreviewURL == nil || *response.PreviewURL != fileURL {
+		t.Fatalf("expected previewUrl to use fileUrl %q, got %#v", fileURL, response.PreviewURL)
+	}
+}
+
 func testUserContext() context.Context {
 	return auth.WithClaims(context.Background(), &auth.Claims{UserID: 1})
 }

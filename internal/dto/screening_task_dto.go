@@ -50,9 +50,9 @@ type ScreeningTaskResponse struct {
 }
 
 type RequirementEvidence struct {
-	Text  string `json:"text"`
-	Start *int   `json:"start"`
-	End   *int   `json:"end"`
+	Text   string  `json:"text"`
+	Reason *string `json:"reason,omitempty"`
+	Type   *string `json:"type,omitempty"`
 }
 
 type ScreeningRequirement struct {
@@ -112,6 +112,11 @@ type ScreeningFinalRecommendationSection struct {
 
 // ScreeningResumeSection 为简历原文和证据高亮提供状态信息。
 type ScreeningResumeSection struct {
+	ID                 int64   `json:"id"`
+	Filename           *string `json:"filename,omitempty"`
+	FileURL            *string `json:"fileUrl,omitempty"`
+	PreviewURL         *string `json:"previewUrl,omitempty"`
+	FileType           *string `json:"fileType,omitempty"`
 	Text               *string `json:"text"`
 	TextAvailable      bool    `json:"textAvailable"`
 	HighlightAvailable bool    `json:"highlightAvailable"`
@@ -136,18 +141,23 @@ type ScreeningTaskDetailSections struct {
 }
 
 type ScreeningTaskDetailResponse struct {
-	ID             int64                  `json:"id"`
-	Status         string                 `json:"status"`
-	ErrorMessage   *string                `json:"errorMessage"`
-	CandidateName  *string                `json:"candidateName"`
-	Position       string                 `json:"position"`
-	AIScore        *float64               `json:"aiScore"`
-	MatchLevel     *string                `json:"matchLevel"`
-	Recommendation *string                `json:"recommendation"`
-	Summary        *string                `json:"summary"`
-	MarkdownReport *string                `json:"markdownReport,omitempty"`
-	ResumeText     *string                `json:"resumeText"`
-	Requirements   []ScreeningRequirement `json:"requirements"`
+	ID               int64                  `json:"id"`
+	Status           string                 `json:"status"`
+	ErrorMessage     *string                `json:"errorMessage"`
+	CandidateName    *string                `json:"candidateName"`
+	Position         string                 `json:"position"`
+	AIScore          *float64               `json:"aiScore"`
+	MatchLevel       *string                `json:"matchLevel"`
+	Recommendation   *string                `json:"recommendation"`
+	Summary          *string                `json:"summary"`
+	MarkdownReport   *string                `json:"markdownReport,omitempty"`
+	ResumeID         int64                  `json:"resumeId"`
+	ResumeFilename   *string                `json:"resumeFilename,omitempty"`
+	ResumeFileURL    *string                `json:"resumeFileUrl,omitempty"`
+	ResumePreviewURL *string                `json:"resumePreviewUrl,omitempty"`
+	ResumeFileType   *string                `json:"resumeFileType,omitempty"`
+	ResumeText       *string                `json:"resumeText"`
+	Requirements     []ScreeningRequirement `json:"requirements"`
 	// Sections 是详情页的新主数据源；保留上方平铺字段以兼容已发布的前端。
 	Sections ScreeningTaskDetailSections `json:"sections"`
 }

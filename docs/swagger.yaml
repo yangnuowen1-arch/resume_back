@@ -234,11 +234,11 @@ definitions:
     type: object
   dto.RequirementEvidence:
     properties:
-      end:
-        type: integer
-      start:
-        type: integer
+      reason:
+        type: string
       text:
+        type: string
+      type:
         type: string
     type: object
   dto.ResumeResponse:

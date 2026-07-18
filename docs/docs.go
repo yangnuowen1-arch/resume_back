@@ -3603,13 +3603,13 @@ const docTemplate = `{
         "dto.RequirementEvidence": {
             "type": "object",
             "properties": {
-                "end": {
-                    "type": "integer"
-                },
-                "start": {
-                    "type": "integer"
+                "reason": {
+                    "type": "string"
                 },
                 "text": {
+                    "type": "string"
+                },
+                "type": {
                     "type": "string"
                 }
             }

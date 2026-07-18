@@ -48,6 +48,10 @@ type ScreeningTaskDetailItem struct {
 	CandidateCurrentTitle      *string
 	CandidateYearsOfExperience *float64
 	CandidateHighestEducation  *string
+	ResumeID                   int64
+	ResumeFilename             *string
+	ResumeFileURL              *string
+	ResumeFileType             *string
 	AIScore                    *float64
 	MatchLevel                 *string
 	Recommendation             *string
@@ -196,6 +200,10 @@ const screeningTaskDetailSelectColumns = `
 	candidates.current_position AS candidate_current_title,
 	candidates.years_of_experience AS candidate_years_of_experience,
 	candidates.highest_education AS candidate_highest_education,
+	applications.resume_id,
+	resumes.original_filename AS resume_filename,
+	resumes.file_url AS resume_file_url,
+	resumes.file_type AS resume_file_type,
 	screening_results.score AS ai_score,
 	screening_results.match_level,
 	screening_results.recommendation,

@@ -15,6 +15,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+
+	"github.com/yangnuowen1-arch/resume_back/internal/filemime"
 )
 
 type UploadResult struct {
@@ -210,6 +212,7 @@ func (u *R2Uploader) Upload(ctx context.Context, key string, file *multipart.Fil
 	}
 	defer source.Close()
 
+	contentType = normalizeUploadContentType(key, file.Filename, contentType, file.Header.Get("Content-Type"))
 	input := &s3.PutObjectInput{
 		Bucket:      aws.String(u.bucket),
 		Key:         aws.String(key),
@@ -229,6 +232,7 @@ func (u *R2Uploader) Upload(ctx context.Context, key string, file *multipart.Fil
 
 // UploadBytes — 直接写入内存字节（供邮箱附件等非 multipart 来源使用）。
 func (u *R2Uploader) UploadBytes(ctx context.Context, key string, data []byte, contentType string) (*UploadResult, error) {
+	contentType = normalizeUploadContentType(key, "", contentType)
 	input := &s3.PutObjectInput{
 		Bucket:      aws.String(u.bucket),
 		Key:         aws.String(key),
@@ -330,4 +334,15 @@ func normalizeEndpoint(endpoint string) string {
 	parsed.Fragment = ""
 
 	return strings.TrimRight(parsed.String(), "/")
+}
+
+func normalizeUploadContentType(key, filename string, contentTypes ...string) string {
+	fallbackName := filename
+	if strings.TrimSpace(fallbackName) == "" {
+		fallbackName = key
+	}
+
+	candidates := append([]string{}, contentTypes...)
+	candidates = append(candidates, filepath.Ext(filename), filepath.Ext(key))
+	return filemime.NormalizeAny(fallbackName, candidates...)
 }

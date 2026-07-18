@@ -30,6 +30,10 @@ func TestScreeningTaskCandidateNameExpressionFallsBackToStoredAIOutput(t *testin
 		"candidates.current_position AS candidate_current_title",
 		"candidates.years_of_experience AS candidate_years_of_experience",
 		"candidates.highest_education AS candidate_highest_education",
+		"applications.resume_id",
+		"resumes.original_filename AS resume_filename",
+		"resumes.file_url AS resume_file_url",
+		"resumes.file_type AS resume_file_type",
 	} {
 		if !strings.Contains(screeningTaskDetailSelectColumns, column) {
 			t.Fatalf("screening task detail query must select %q", column)

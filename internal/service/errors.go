@@ -6,9 +6,6 @@ var (
 	ErrUnauthenticated       = errors.New("未登录或登录态丢失")
 	ErrInvalidParameter      = errors.New("参数错误")
 	ErrScreeningTaskNotFound = errors.New("筛选任务不存在")
-	ErrResumeNotFound         = errors.New("简历不存在")
-	ErrResumeNotPDF           = errors.New("该简历不是 PDF 文件")
-	ErrResumeFileUnavailable  = errors.New("简历文件不可用")
 )
 
 type invalidParameterError struct {

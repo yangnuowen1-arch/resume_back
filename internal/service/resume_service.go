@@ -3,14 +3,12 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/yangnuowen1-arch/resume_back/internal/dal/model"
 	"github.com/yangnuowen1-arch/resume_back/internal/dto"
-	"github.com/yangnuowen1-arch/resume_back/internal/filemime"
 	"github.com/yangnuowen1-arch/resume_back/internal/parser"
 	"github.com/yangnuowen1-arch/resume_back/internal/repository"
 	"github.com/yangnuowen1-arch/resume_back/internal/storage"
@@ -20,17 +18,6 @@ type ResumeService interface {
 	CreateUploadedResume(ctx context.Context, req dto.UploadResumeRequest) (*dto.ResumeResponse, error)
 	List(ctx context.Context, query dto.ResumeQuery) ([]dto.ResumeResponse, int64, error)
 	Parse(ctx context.Context, id int64) (*dto.ResumeResponse, error)
-	GetPreviewFile(ctx context.Context, id int64) (*ResumePreviewFile, error)
-}
-
-// ResumePreviewFile is the trusted metadata needed to stream a PDF to the
-// browser. ObjectKey never comes from the request, so callers cannot use this
-// endpoint to read arbitrary objects from the configured storage backend.
-type ResumePreviewFile struct {
-	ObjectKey   string
-	Filename    string
-	ContentType string
-	Size        int64
 }
 
 type resumeService struct {
@@ -127,7 +114,7 @@ func (s *resumeService) List(ctx context.Context, query dto.ResumeQuery) ([]dto.
 			OriginalFilename: item.OriginalFilename,
 			FileKey:          item.FileKey,
 			FileURL:          item.FileURL,
-			PreviewURL:       resumePreviewURL(pointerToInt64(item.ID), item.OriginalFilename, item.FileType),
+			PreviewURL:       resumePreviewURL(item.FileURL),
 			FileType:         item.FileType,
 			FileSize:         item.FileSize,
 			RawText:          item.RawText,
@@ -144,48 +131,6 @@ func (s *resumeService) List(ctx context.Context, query dto.ResumeQuery) ([]dto.
 	}
 
 	return result, total, nil
-}
-
-// GetPreviewFile returns metadata for a PDF preview after checking that the
-// caller is authenticated and that the requested resume exists.
-func (s *resumeService) GetPreviewFile(ctx context.Context, id int64) (*ResumePreviewFile, error) {
-	if _, err := currentUserID(ctx); err != nil {
-		return nil, err
-	}
-	if id <= 0 {
-		return nil, newInvalidParameterError("简历 ID 不合法")
-	}
-
-	resume, err := s.resumeRepo.FindByID(ctx, id)
-	if err != nil || resume == nil {
-		return nil, ErrResumeNotFound
-	}
-
-	objectKey := resumeObjectKey(resume)
-	if objectKey == "" {
-		return nil, ErrResumeFileUnavailable
-	}
-
-	filename := resumeStringValue(resume.OriginalFilename)
-	if filename == "" {
-		filename = "resume.pdf"
-	}
-	contentType := filemime.Normalize(resumeStringValue(resume.FileType), filename)
-	if contentType != "application/pdf" {
-		return nil, ErrResumeNotPDF
-	}
-
-	var size int64
-	if resume.FileSize != nil && *resume.FileSize > 0 {
-		size = *resume.FileSize
-	}
-
-	return &ResumePreviewFile{
-		ObjectKey:   objectKey,
-		Filename:    filename,
-		ContentType: contentType,
-		Size:        size,
-	}, nil
 }
 
 func (s *resumeService) Parse(ctx context.Context, id int64) (*dto.ResumeResponse, error) {
@@ -264,14 +209,13 @@ func (s *resumeService) Parse(ctx context.Context, id int64) (*dto.ResumeRespons
 }
 
 func toResumeResponse(resume *model.Resume) *dto.ResumeResponse {
-	resumeID := resume.ID
 	return &dto.ResumeResponse{
 		ID:               resume.ID,
 		CandidateID:      resume.CandidateID,
 		OriginalFilename: resume.OriginalFilename,
 		FileKey:          resume.FileKey,
 		FileURL:          resume.FileURL,
-		PreviewURL:       resumePreviewURL(&resumeID, resume.OriginalFilename, resume.FileType),
+		PreviewURL:       resumePreviewURL(resume.FileURL),
 		FileType:         resume.FileType,
 		FileSize:         resume.FileSize,
 		RawText:          resume.RawText,
@@ -287,15 +231,16 @@ func toResumeResponse(resume *model.Resume) *dto.ResumeResponse {
 	}
 }
 
-func resumePreviewURL(resumeID *int64, filename, fileType *string) *string {
-	if resumeID == nil || *resumeID <= 0 {
-		return nil
-	}
-	if filemime.Normalize(resumeStringValue(fileType), resumeStringValue(filename)) != "application/pdf" {
+func resumePreviewURL(fileURL *string) *string {
+	if fileURL == nil {
 		return nil
 	}
 
-	url := fmt.Sprintf("/api/v1/resumes/%d/file", *resumeID)
+	url := strings.TrimSpace(*fileURL)
+	if url == "" {
+		return nil
+	}
+
 	return &url
 }
 
@@ -304,10 +249,6 @@ func resumeStringValue(value *string) string {
 		return ""
 	}
 	return strings.TrimSpace(*value)
-}
-
-func pointerToInt64(value int64) *int64 {
-	return &value
 }
 
 func normalizeResumeQuery(query dto.ResumeQuery) dto.ResumeQuery {

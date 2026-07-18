@@ -97,7 +97,7 @@ Authorization: Bearer <token>
 | 重点关注 | `sections.requirementsComparison.attentionItems` | 后端已筛选，包含 `partial` 与 `miss`。 |
 | 优势 / 劣势 / 风险 / 面试建议 | `sections.candidateAnalysis` | 缺失时始终返回空数组。 |
 | 最终筛选建议 | `sections.finalRecommendation` | `text` 与顶部摘要可相同，供底部卡片独立渲染。 |
-| 简历原文与高亮 | `sections.resume` | 原文缺失时仍可渲染结构化报告，只隐藏原文/高亮能力。 |
+| PDF 预览与高亮 | `sections.resume` | `highlightAvailable` 表示当前详情有 PDF 预览地址和可用于 textLayer 匹配的 evidence。 |
 | Markdown 降级 | `sections.fallback` | 仅在 `shouldUseMarkdownFallback` 为 `true` 时使用。 |
 
 ## 岗位要求对比字段
@@ -106,10 +106,12 @@ Authorization: Bearer <token>
 type RequirementMatchStatus = 'pass' | 'partial' | 'miss'
 
 interface RequirementEvidence {
+  // 必须是从 PDF/简历原文逐字复制的片段；前端用 pdf.js textLayer 文本索引定位。
   text: string
-  // JavaScript UTF-16 code-unit offsets，可直接传给 String.slice。
-  start: number | null
-  end: number | null
+  // 可选：模型给出的证据解释。
+  reason?: string
+  // 可选：证据分类，例如 experience、skill、education、missing。
+  type?: string
 }
 
 interface ScreeningRequirement {
@@ -127,9 +129,10 @@ interface ScreeningRequirement {
 约束：
 
 - `items` 是完整表格，`matchedItems` 和 `attentionItems` 是同一批数据的展示分组；不要把三组内容同时堆叠成同一张表。
-- `evidence.text` 只有在其可在 `resume.text` 中逐字找到时才会返回。无法验证、或简历原文缺失时，后端返回 `[]`；`candidateSituation` 仍可作为展示用的候选人情况说明。
-- `start` / `end` 使用 JavaScript UTF-16 字符串坐标，不是 Go 的 UTF-8 字节坐标。前端可直接 `resumeText.slice(start, end)`。
-- `resume.text === null` 不代表结构化筛选结果不可用；此时 `textAvailable` 与 `highlightAvailable` 为 `false`，仅禁用简历原文高亮区。
+- `evidence.text` 由 Dify 从简历原文逐字复制，后端只做空值清洗和原样保存，不返回 `start` / `end` / page / bbox 等坐标信息。
+- 前端应在 pdf.js textLayer 渲染完成后建立文本索引，用 `evidence.text` 做精确匹配或轻量 normalize 匹配，再映射到对应 span 高亮。
+- `resume.text === null` 不代表结构化筛选结果不可用，也不代表 PDF 高亮不可用；新高亮以 PDF 预览和 textLayer 为准。
+- `highlightAvailable === true` 只表示后端有可用于定位的 evidence 和 PDF 预览地址；实际是否命中由前端 textLayer 匹配结果决定。
 - 任务状态为 `failed` 时，优先展示 `errorMessage`（或 `candidateInfo.taskErrorMessage`），不要将空的评分或 Markdown 报告误呈现为成功结果。
 
 ## Markdown 降级规则

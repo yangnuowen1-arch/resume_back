@@ -265,6 +265,10 @@ func TestScreeningTaskDetailBuildsSectionedResponse(t *testing.T) {
 	candidateCurrentTitle := "候选人档案岗位"
 	candidateYears := 9.0
 	candidateEducation := "候选人档案学历"
+	resumeID := int64(88)
+	resumeFilename := "resume.pdf"
+	resumeFileURL := "https://files.example.com/resumes/resume.pdf"
+	resumeFileType := "application/pdf"
 
 	service := &screeningTaskService{repo: &stubScreeningTaskRepository{detail: &repository.ScreeningTaskDetailItem{
 		ID:                         30,
@@ -274,6 +278,10 @@ func TestScreeningTaskDetailBuildsSectionedResponse(t *testing.T) {
 		CandidateCurrentTitle:      &candidateCurrentTitle,
 		CandidateYearsOfExperience: &candidateYears,
 		CandidateHighestEducation:  &candidateEducation,
+		ResumeID:                   resumeID,
+		ResumeFilename:             &resumeFilename,
+		ResumeFileURL:              &resumeFileURL,
+		ResumeFileType:             &resumeFileType,
 		AIScore:                    &score,
 		MatchLevel:                 &storedMatchLevel,
 		Recommendation:             &storedRecommendation,
@@ -311,6 +319,24 @@ func TestScreeningTaskDetailBuildsSectionedResponse(t *testing.T) {
 	}
 	if result.Sections.CandidateInfo.TaskStatus != ScreeningTaskStatusSuccess {
 		t.Fatalf("expected task status success, got %q", result.Sections.CandidateInfo.TaskStatus)
+	}
+	if result.ResumeID != resumeID {
+		t.Fatalf("expected resume ID %d, got %d", resumeID, result.ResumeID)
+	}
+	if result.ResumeFileURL == nil || *result.ResumeFileURL != resumeFileURL {
+		t.Fatalf("expected resume file URL %q, got %#v", resumeFileURL, result.ResumeFileURL)
+	}
+	if result.ResumePreviewURL == nil || *result.ResumePreviewURL != resumeFileURL {
+		t.Fatalf("expected resume preview URL %q, got %#v", resumeFileURL, result.ResumePreviewURL)
+	}
+	if result.ResumeFileType == nil || *result.ResumeFileType != resumeFileType {
+		t.Fatalf("expected resume file type %q, got %#v", resumeFileType, result.ResumeFileType)
+	}
+	if result.Sections.Resume.ID != resumeID {
+		t.Fatalf("expected section resume ID %d, got %d", resumeID, result.Sections.Resume.ID)
+	}
+	if result.Sections.Resume.PreviewURL == nil || *result.Sections.Resume.PreviewURL != resumeFileURL {
+		t.Fatalf("expected section resume preview URL %q, got %#v", resumeFileURL, result.Sections.Resume.PreviewURL)
 	}
 	if result.Sections.Assessment.Score == nil || *result.Sections.Assessment.Score != score {
 		t.Fatalf("expected assessment score %v, got %#v", score, result.Sections.Assessment.Score)
@@ -389,11 +415,17 @@ func TestScreeningTaskDetailKeepsStructuredSectionsWithoutResumeText(t *testing.
 		{"id":"r1","label":"学历：本科","status":"pass","comment":"符合本科及以上学历要求。","evidence":[{"text":"嘉应学院·软件工程(本科)","start":null,"end":null}]}
 	]`
 	rawResponse := `{"output":{"markdown_report":"# Markdown 报告"}}`
+	resumeFileURL := "https://files.example.com/resumes/resume.pdf"
+	resumeFileType := "application/pdf"
+	resumeFilename := "resume.pdf"
 	service := &screeningTaskService{repo: &stubScreeningTaskRepository{detail: &repository.ScreeningTaskDetailItem{
-		ID:           32,
-		Status:       ScreeningTaskStatusSuccess,
-		Requirements: &requirements,
-		RawResponse:  &rawResponse,
+		ID:             32,
+		Status:         ScreeningTaskStatusSuccess,
+		ResumeFilename: &resumeFilename,
+		ResumeFileURL:  &resumeFileURL,
+		ResumeFileType: &resumeFileType,
+		Requirements:   &requirements,
+		RawResponse:    &rawResponse,
 	}}}
 
 	result, err := service.Detail(context.Background(), 32)
@@ -403,56 +435,56 @@ func TestScreeningTaskDetailKeepsStructuredSectionsWithoutResumeText(t *testing.
 	if result.Sections.Fallback.ShouldUseMarkdownFallback {
 		t.Fatal("available structured requirements must not fall back only because resume text is missing")
 	}
-	if result.Sections.Resume.TextAvailable || result.Sections.Resume.HighlightAvailable {
-		t.Fatalf("expected unavailable resume/highlight state, got %#v", result.Sections.Resume)
+	if result.Sections.Resume.TextAvailable {
+		t.Fatalf("expected resume text to be unavailable, got %#v", result.Sections.Resume)
+	}
+	if !result.Sections.Resume.HighlightAvailable {
+		t.Fatalf("expected pdf evidence highlights to be available without resume text, got %#v", result.Sections.Resume)
 	}
 	item := result.Sections.RequirementsComparison.Items[0]
-	if len(item.Evidence) != 0 {
-		t.Fatalf("expected unverified evidence to be removed, got %#v", item.Evidence)
+	if len(item.Evidence) != 1 || item.Evidence[0].Text != "嘉应学院·软件工程(本科)" {
+		t.Fatalf("expected evidence text to be preserved for pdf.js matching, got %#v", item.Evidence)
 	}
 	if item.CandidateSituation == nil || *item.CandidateSituation != "嘉应学院·软件工程(本科)" {
 		t.Fatalf("expected candidate situation for table display, got %#v", item.CandidateSituation)
 	}
 }
 
-func TestBuildRequirementsJSONVerifiesEvidenceAndUsesUTF16Offsets(t *testing.T) {
+func TestBuildRequirementsJSONPreservesEvidenceTextForPDFTextLayer(t *testing.T) {
 	comment := "符合本科要求。"
-	resumeText := "姓名：杨诺雯\n嘉应学院·软件工程(本科)"
+	reason := "学历满足要求。"
+	evidenceType := "education"
 	stored := buildRequirementsJSON([]aiRequirement{{
 		ID:      "r1",
 		Label:   "学历：本科",
 		Status:  "pass",
 		Comment: &comment,
 		Evidence: []aiEvidence{
-			{Text: "嘉应学院·软件工程(本科)"},
+			{Text: "嘉应学院·软件工程(本科)", Reason: &reason, Type: &evidenceType},
 			{Text: "不存在的证据"},
 		},
-	}}, resumeText)
+	}})
 	if stored == nil {
 		t.Fatal("expected normalized requirements")
 	}
 
 	requirements := parseStoredRequirements(stored)
-	if len(requirements) != 1 || len(requirements[0].Evidence) != 1 {
-		t.Fatalf("expected only the verified evidence, got %#v", requirements)
+	if len(requirements) != 1 || len(requirements[0].Evidence) != 2 {
+		t.Fatalf("expected evidence text to be preserved without backend offset validation, got %#v", requirements)
 	}
 	evidence := requirements[0].Evidence[0]
-	if evidence.Start == nil || evidence.End == nil || *evidence.Start != 7 || *evidence.End != 20 {
-		t.Fatalf("expected UTF-16 offsets [7,20], got %#v", evidence)
+	if evidence.Text != "嘉应学院·软件工程(本科)" {
+		t.Fatalf("expected verbatim evidence text, got %#v", evidence)
 	}
-	if requirements[0].CandidateSituation == nil || *requirements[0].CandidateSituation != "嘉应学院·软件工程(本科)" {
-		t.Fatalf("expected situation from verified evidence, got %#v", requirements[0].CandidateSituation)
+	if evidence.Reason == nil || *evidence.Reason != reason {
+		t.Fatalf("expected evidence reason, got %#v", evidence)
 	}
-
-	withoutResumeText := buildRequirementsJSON([]aiRequirement{{
-		ID:       "r1",
-		Label:    "学历：本科",
-		Status:   "pass",
-		Evidence: []aiEvidence{{Text: "嘉应学院·软件工程(本科)"}},
-	}}, "")
-	withoutResumeRequirements := parseStoredRequirements(withoutResumeText)
-	if len(withoutResumeRequirements) != 1 || len(withoutResumeRequirements[0].Evidence) != 0 {
-		t.Fatalf("expected no unverified evidence without resume text, got %#v", withoutResumeRequirements)
+	if evidence.Type == nil || *evidence.Type != evidenceType {
+		t.Fatalf("expected evidence type, got %#v", evidence)
+	}
+	expectedSituation := "嘉应学院·软件工程(本科)；不存在的证据"
+	if requirements[0].CandidateSituation == nil || *requirements[0].CandidateSituation != expectedSituation {
+		t.Fatalf("expected situation from evidence text, got %#v", requirements[0].CandidateSituation)
 	}
 
 	candidateSituation := "候选人简历中未体现 Flutter 或 Dart 经验。"
@@ -461,7 +493,7 @@ func TestBuildRequirementsJSONVerifiesEvidenceAndUsesUTF16Offsets(t *testing.T) 
 		Label:              "要会 Flutter",
 		CandidateSituation: &candidateSituation,
 		Status:             "miss",
-	}}, "")
+	}})
 	withSituationRequirements := parseStoredRequirements(withSituation)
 	if len(withSituationRequirements) != 1 || withSituationRequirements[0].CandidateSituation == nil || *withSituationRequirements[0].CandidateSituation != candidateSituation {
 		t.Fatalf("expected candidate_situation from AI output, got %#v", withSituationRequirements)

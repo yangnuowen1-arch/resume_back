@@ -337,7 +337,7 @@ func (s *screeningTaskService) processQueuedResumeScreening(ctx context.Context,
 		Weaknesses:          jsonStringPtr(aiOutput.Weaknesses),
 		Risks:               jsonStringPtr(aiOutput.Risks),
 		MissingRequirements: jsonStringPtr(aiOutput.MissingRequirements),
-		Requirements:        buildRequirementsJSON(aiOutput.Requirements, stringValue(resume.RawText, "")),
+		Requirements:        buildRequirementsJSON(aiOutput.Requirements),
 		AIProvider:          stringPtrValue("dify"),
 		PromptVersion:       stringPtrValue("dify_resume_screening_v1"),
 		RawResponse:         &rawResponse,
@@ -391,26 +391,31 @@ func (s *screeningTaskService) Detail(ctx context.Context, id int64) (*dto.Scree
 
 	rawOutput := extractStoredScreeningOutput(item.RawResponse)
 	requirements := parseStoredRequirements(item.Requirements)
-	requirements = verifyRequirementEvidence(requirements, item.ResumeText)
 	markdownReport := trimOptionalString(rawOutput.MarkdownReport)
 	summary := firstOptionalString(item.Summary, rawOutput.Summary)
 	matchLevel := firstOptionalString(item.MatchLevel, rawOutput.MatchLevel)
 	recommendation := firstOptionalString(item.Recommendation, rawOutput.Recommendation)
+	previewURL := resumePreviewURL(item.ResumeFileURL)
 
 	detail := &dto.ScreeningTaskDetailResponse{
-		ID:             item.ID,
-		Status:         item.Status,
-		ErrorMessage:   trimOptionalString(item.ErrorMessage),
-		CandidateName:  item.CandidateName,
-		Position:       item.Position,
-		AIScore:        item.AIScore,
-		MatchLevel:     matchLevel,
-		Recommendation: recommendation,
-		Summary:        summary,
-		MarkdownReport: markdownReport,
-		ResumeText:     item.ResumeText,
-		Requirements:   requirements,
-		Sections:       buildScreeningTaskDetailSections(item, rawOutput, requirements, markdownReport),
+		ID:               item.ID,
+		Status:           item.Status,
+		ErrorMessage:     trimOptionalString(item.ErrorMessage),
+		CandidateName:    item.CandidateName,
+		Position:         item.Position,
+		AIScore:          item.AIScore,
+		MatchLevel:       matchLevel,
+		Recommendation:   recommendation,
+		Summary:          summary,
+		MarkdownReport:   markdownReport,
+		ResumeID:         item.ResumeID,
+		ResumeFilename:   item.ResumeFilename,
+		ResumeFileURL:    item.ResumeFileURL,
+		ResumePreviewURL: previewURL,
+		ResumeFileType:   item.ResumeFileType,
+		ResumeText:       item.ResumeText,
+		Requirements:     requirements,
+		Sections:         buildScreeningTaskDetailSections(item, rawOutput, requirements, markdownReport),
 	}
 
 	return detail, nil
@@ -494,7 +499,8 @@ func buildScreeningTaskDetailSections(
 	interviewQuestions := normalizedStringSlice(rawOutput.SuggestedInterviewQuestions)
 
 	textAvailable := item.ResumeText != nil && strings.TrimSpace(*item.ResumeText) != ""
-	highlightAvailable := textAvailable && hasHighlightableEvidence(requirements)
+	highlightAvailable := hasPDFPreview(item.ResumeFileURL, item.ResumeFileType, item.ResumeFilename) &&
+		hasHighlightableEvidence(requirements)
 
 	return dto.ScreeningTaskDetailSections{
 		Summary: dto.ScreeningSummarySection{
@@ -530,6 +536,11 @@ func buildScreeningTaskDetailSections(
 			Text:           summary,
 		},
 		Resume: dto.ScreeningResumeSection{
+			ID:                 item.ResumeID,
+			Filename:           item.ResumeFilename,
+			FileURL:            item.ResumeFileURL,
+			PreviewURL:         resumePreviewURL(item.ResumeFileURL),
+			FileType:           item.ResumeFileType,
 			Text:               item.ResumeText,
 			TextAvailable:      textAvailable,
 			HighlightAvailable: highlightAvailable,
@@ -546,14 +557,30 @@ func normalizeStoredRequirement(requirement dto.ScreeningRequirement, index int)
 	requirement.Label = strings.TrimSpace(requirement.Label)
 	requirement.Status = normalizeRequirementStatus(requirement.Status)
 	requirement.Comment = trimOptionalString(requirement.Comment)
-	if requirement.Evidence == nil {
-		requirement.Evidence = []dto.RequirementEvidence{}
-	}
+	requirement.Evidence = normalizeRequirementEvidence(requirement.Evidence)
 	requirement.CandidateSituation = firstOptionalString(
 		trimOptionalString(requirement.CandidateSituation),
 		candidateSituationFromEvidence(requirement.Evidence, requirement.Comment),
 	)
 	return requirement
+}
+
+func normalizeRequirementEvidence(evidence []dto.RequirementEvidence) []dto.RequirementEvidence {
+	result := make([]dto.RequirementEvidence, 0, len(evidence))
+	for _, item := range evidence {
+		if strings.TrimSpace(item.Text) == "" {
+			continue
+		}
+		result = append(result, dto.RequirementEvidence{
+			Text:   item.Text,
+			Reason: trimOptionalString(item.Reason),
+			Type:   trimOptionalString(item.Type),
+		})
+	}
+	if result == nil {
+		return []dto.RequirementEvidence{}
+	}
+	return result
 }
 
 func candidateSituationFromEvidence(evidence []dto.RequirementEvidence, fallback *string) *string {
@@ -638,62 +665,17 @@ func hasHighlightableEvidence(requirements []dto.ScreeningRequirement) bool {
 	return false
 }
 
-// verifyRequirementEvidence 兼容历史 requirements：每次返回详情前都以 resumeText 复核证据，
-// 并重新计算前端使用的 UTF-16 偏移。这样旧数据也不会返回不可定位或伪造的证据。
-func verifyRequirementEvidence(requirements []dto.ScreeningRequirement, resumeText *string) []dto.ScreeningRequirement {
-	if len(requirements) == 0 {
-		return []dto.ScreeningRequirement{}
+func hasPDFPreview(fileURL *string, fileType *string, filename *string) bool {
+	if fileURL == nil || strings.TrimSpace(*fileURL) == "" {
+		return false
 	}
 
-	verifiedRequirements := make([]dto.ScreeningRequirement, 0, len(requirements))
-	text := ""
-	if resumeText != nil {
-		text = *resumeText
+	normalizedFileType := strings.ToLower(strings.TrimSpace(stringValue(fileType, "")))
+	if strings.Contains(normalizedFileType, "pdf") {
+		return true
 	}
 
-	for _, requirement := range requirements {
-		candidateSituation := trimOptionalString(requirement.CandidateSituation)
-		verifiedEvidence := make([]dto.RequirementEvidence, 0, len(requirement.Evidence))
-		searchFrom := 0
-		if strings.TrimSpace(text) != "" {
-			for _, evidence := range requirement.Evidence {
-				if strings.TrimSpace(evidence.Text) == "" {
-					continue
-				}
-
-				startAt := min(searchFrom, len(text))
-				idx := strings.Index(text[startAt:], evidence.Text)
-				if idx < 0 {
-					idx = strings.Index(text, evidence.Text)
-					startAt = 0
-				}
-				if idx < 0 {
-					continue
-				}
-
-				byteStart := startAt + idx
-				byteEnd := byteStart + len(evidence.Text)
-				start := utf16CodeUnitOffset(text, byteStart)
-				end := utf16CodeUnitOffset(text, byteEnd)
-				searchFrom = byteEnd
-				verifiedEvidence = append(verifiedEvidence, dto.RequirementEvidence{
-					Text:  evidence.Text,
-					Start: &start,
-					End:   &end,
-				})
-			}
-		}
-
-		requirement.Evidence = verifiedEvidence
-		if candidateSituation != nil {
-			requirement.CandidateSituation = candidateSituation
-		} else {
-			requirement.CandidateSituation = candidateSituationFromEvidence(verifiedEvidence, requirement.Comment)
-		}
-		verifiedRequirements = append(verifiedRequirements, requirement)
-	}
-
-	return verifiedRequirements
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(stringValue(filename, ""))), ".pdf")
 }
 
 func normalizeScreeningTaskQuery(query dto.ScreeningTaskQuery) dto.ScreeningTaskQuery {
@@ -743,9 +725,9 @@ type aiRequirement struct {
 }
 
 type aiEvidence struct {
-	Text  string `json:"text"`
-	Start *int   `json:"start"`
-	End   *int   `json:"end"`
+	Text   string  `json:"text"`
+	Reason *string `json:"reason"`
+	Type   *string `json:"type"`
 }
 
 func parseScreeningAIOutput(text string) (screeningAIOutput, error) {
@@ -815,10 +797,9 @@ func normalizeRequirementStatus(status string) string {
 	}
 }
 
-// buildRequirementsJSON 将 Dify 输出的 requirements 归一化为前端 DTO 结构，
-// 并基于简历原文用 strings.Index 校验证据、计算前端 JavaScript 可直接使用的 UTF-16 start/end。
-// 没有 requirements 时返回 nil（列保持空，前端走降级态）。
-func buildRequirementsJSON(items []aiRequirement, resumeText string) *string {
+// buildRequirementsJSON 将 Dify 输出的 requirements 归一化为前端 DTO 结构。
+// evidence.text 保留 Dify 从 PDF 原文复制的文本，前端使用 pdf.js textLayer 定位高亮。
+func buildRequirementsJSON(items []aiRequirement) *string {
 	if len(items) == 0 {
 		return nil
 	}
@@ -831,34 +812,16 @@ func buildRequirementsJSON(items []aiRequirement, resumeText string) *string {
 		}
 
 		evidence := make([]dto.RequirementEvidence, 0, len(item.Evidence))
-		searchFrom := 0
 		for _, ev := range item.Evidence {
 			text := ev.Text
 			if strings.TrimSpace(text) == "" {
 				continue
 			}
-
-			// 没有同源简历原文时无法验证「逐字一致」约束，不能向前端返回未经验证的证据。
-			if strings.TrimSpace(resumeText) == "" {
-				continue
-			}
-
-			startAt := min(searchFrom, len(resumeText))
-			idx := strings.Index(resumeText[startAt:], text)
-			if idx < 0 {
-				idx = strings.Index(resumeText, text)
-				startAt = 0
-			}
-			if idx < 0 {
-				continue
-			}
-
-			byteStart := startAt + idx
-			byteEnd := byteStart + len(text)
-			start := utf16CodeUnitOffset(resumeText, byteStart)
-			end := utf16CodeUnitOffset(resumeText, byteEnd)
-			searchFrom = byteEnd
-			evidence = append(evidence, dto.RequirementEvidence{Text: text, Start: &start, End: &end})
+			evidence = append(evidence, dto.RequirementEvidence{
+				Text:   text,
+				Reason: trimOptionalString(ev.Reason),
+				Type:   trimOptionalString(ev.Type),
+			})
 		}
 		comment := trimOptionalString(item.Comment)
 		candidateSituation := firstOptionalString(
@@ -881,21 +844,6 @@ func buildRequirementsJSON(items []aiRequirement, resumeText string) *string {
 	}
 
 	return jsonStringPtr(requirements)
-}
-
-// utf16CodeUnitOffset 将 Go 字节偏移换算为 JavaScript 字符串索引（UTF-16 code units）。
-// strings.Index 返回字节偏移；直接将其交给浏览器会导致中文或 emoji 高亮错位。
-func utf16CodeUnitOffset(text string, byteOffset int) int {
-	byteOffset = min(max(byteOffset, 0), len(text))
-	offset := 0
-	for _, r := range text[:byteOffset] {
-		if r > 0xFFFF {
-			offset += 2
-		} else {
-			offset++
-		}
-	}
-	return offset
 }
 
 func requirementID(raw interface{}, index int) string {
